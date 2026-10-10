@@ -1,0 +1,42 @@
+{
+  "name": "wandering-gallery",
+  "version": "0.1.0",
+  "description": "A lightweight, mobile-friendly gallery for AI-generated images and videos (ComfyUI-aware).",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev:server": "tsx watch src/server/main.ts",
+    "dev:web": "vite",
+    "build": "tsc -p tsconfig.server.json && vite build",
+    "start": "node dist/server/main.js",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "tsx e2e/setup.ts && playwright test"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.3.0",
+    "chokidar": "^5.0.0",
+    "fastify": "^5.12.5",
+    "pino": "^10.4.0",
+    "sharp": "^0.35.5",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^24.19.2",
+    "preact": "^11.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wandermyz/wandering-gallery.git"
+  }
+}

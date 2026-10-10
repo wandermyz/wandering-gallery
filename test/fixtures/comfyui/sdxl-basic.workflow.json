@@ -1,0 +1,21 @@
+{
+  "id": "6f8a1c2e-0000-4000-8000-000000000001",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 9,
+  "nodes": [
+    { "id": 1, "type": "CheckpointLoaderSimple", "mode": 0, "widgets_values": ["sdxl_base_1.0.safetensors"] },
+    { "id": 2, "type": "CLIPTextEncode", "mode": 0, "title": "Positive", "widgets_values": ["a lighthouse on a cliff at dusk, dramatic sky, highly detailed"] },
+    { "id": 3, "type": "CLIPTextEncode", "mode": 0, "title": "Negative", "widgets_values": ["blurry, lowres, watermark"] },
+    { "id": 4, "type": "EmptyLatentImage", "mode": 0, "widgets_values": [832, 1216, 1] },
+    { "id": 5, "type": "KSampler", "mode": 0, "widgets_values": [123456789, "fixed", 28, 5.5, "euler", "normal", 1] },
+    { "id": 8, "type": "LoraLoader", "mode": 4, "widgets_values": ["bypassed_lora.safetensors", 1, 1] },
+    { "id": 6, "type": "VAEDecode", "mode": 0, "widgets_values": [] },
+    { "id": 7, "type": "SaveImage", "mode": 0, "widgets_values": ["lighthouse"] }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

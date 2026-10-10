@@ -1,0 +1,18 @@
+{
+  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": ["30", 0], "clip": ["11", 0] }, "_meta": { "title": "CLIP Text Encode (Positive Prompt)" } },
+  "8": { "class_type": "VAEDecode", "inputs": { "samples": ["13", 0], "vae": ["10", 0] } },
+  "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "flux", "images": ["8", 0] } },
+  "10": { "class_type": "VAELoader", "inputs": { "vae_name": "ae.safetensors" } },
+  "11": { "class_type": "DualCLIPLoader", "inputs": { "clip_name1": "t5xxl_fp16.safetensors", "clip_name2": "clip_l.safetensors", "type": "flux" } },
+  "12": { "class_type": "UNETLoader", "inputs": { "unet_name": "flux1-dev.safetensors", "weight_dtype": "default" } },
+  "13": { "class_type": "SamplerCustomAdvanced", "inputs": { "noise": ["25", 0], "guider": ["22", 0], "sampler": ["16", 0], "sigmas": ["17", 0], "latent_image": ["27", 0] } },
+  "16": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler" } },
+  "17": { "class_type": "BasicScheduler", "inputs": { "scheduler": "simple", "steps": 20, "denoise": 1.0, "model": ["12", 0] } },
+  "22": { "class_type": "BasicGuider", "inputs": { "model": ["12", 0], "conditioning": ["26", 0] } },
+  "25": { "class_type": "RandomNoise", "inputs": { "noise_seed": ["31", 0] } },
+  "26": { "class_type": "FluxGuidance", "inputs": { "guidance": 3.5, "conditioning": ["6", 0] } },
+  "27": { "class_type": "EmptySD3LatentImage", "inputs": { "width": 1024, "height": 1024, "batch_size": 1 } },
+  "30": { "class_type": "PrimitiveStringMultiline", "inputs": { "value": "a red fox in fresh snow, morning light" } },
+  "31": { "class_type": "PrimitiveInt", "inputs": { "value": 42 } },
+  "40": { "class_type": "Power Lora Loader (rgthree)", "inputs": { "lora_1": { "on": true, "lora": "fox_style.safetensors", "strength": 0.9 }, "lora_2": { "on": false, "lora": "disabled.safetensors", "strength": 1 }, "model": ["12", 0] } }
+}

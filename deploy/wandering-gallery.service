@@ -1,0 +1,30 @@
+# systemd *user* unit for wandering-gallery.
+# Installed by scripts/install.sh into ~/.config/systemd/user/.
+# @APP_DIR@ and @NODE@ are filled in by the installer.
+
+[Unit]
+Description=wandering-gallery media gallery
+Documentation=https://github.com/wandermyz/wandering-gallery
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_DIR@
+ExecStart=@NODE@ @APP_DIR@/dist/server/main.js --config %h/.config/wandering-gallery/config.yaml
+Environment=NODE_ENV=production
+Environment=PATH=@PATH@
+Restart=always
+RestartSec=3
+# Stay out of ComfyUI's way: lowest CPU priority and idle-class disk I/O.
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryHigh=1G
+MemoryMax=2G
+# Hardening that works for unprivileged user services.
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0022
+
+[Install]
+WantedBy=default.target

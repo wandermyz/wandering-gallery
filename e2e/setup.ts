@@ -1,0 +1,65 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { FFMPEG, FFPROBE, ageAll, fixture, hasFfmpeg, makeJpeg, makePng, makeVideo } from '../test/helpers.js';
+
+/** Builds a throwaway library with a mix of media for the browser tests. */
+async function setup() {
+  const root = path.resolve('.tmp/e2e');
+  fs.rmSync(root, { recursive: true, force: true });
+  const lib = path.join(root, 'lib');
+  const ro = path.join(root, 'readonly');
+  fs.mkdirSync(lib, { recursive: true });
+  fs.mkdirSync(ro, { recursive: true });
+
+  await makePng(path.join(lib, 'gen_00001_.png'), {
+    w: 832, h: 1216, color: '#3a4a8a',
+    text: { prompt: fixture('controlnet-lora.prompt.json'), workflow: fixture('sdxl-basic.workflow.json') },
+  });
+  for (let i = 2; i <= 40; i++) {
+    await makePng(path.join(lib, `gen_${String(i).padStart(5, '0')}_.png`), {
+      w: 512, h: 768, color: `hsl(${i * 9}, 60%, 45%)`,
+      text: { prompt: fixture('sdxl-basic.prompt.json') },
+    });
+  }
+  await makeJpeg(path.join(lib, 'portraits', 'p1.jpg'), '#884422');
+  await makeJpeg(path.join(lib, 'portraits', 'p2.jpg'), '#448822');
+  if (hasFfmpeg) makeVideo(path.join(lib, 'video', 'clip_00001_.mp4'), { seconds: 3, metadata: { prompt: fixture('wan-video.prompt.json').replace(/\s+/g, ' ') } });
+  await makePng(path.join(ro, 'locked.png'), { color: '#777777' });
+
+  ageAll(root, 3600);
+  // Distinct mtimes so ordering is deterministic: gen_00001_ is the newest.
+  const files = fs.readdirSync(lib).filter((f) => f.endsWith('.png')).sort().reverse();
+  files.forEach((f, i) => {
+    const t = new Date(Date.now() - 3600_000 - i * 60_000);
+    fs.utimesSync(path.join(lib, f), t, t);
+  });
+  const newest = new Date(Date.now() - 600_000);
+  fs.utimesSync(path.join(lib, 'gen_00001_.png'), newest, newest);
+  if (hasFfmpeg) {
+    const t = new Date(Date.now() - 300_000);
+    fs.utimesSync(path.join(lib, 'video', 'clip_00001_.mp4'), t, t);
+  }
+
+  fs.writeFileSync(path.join(root, 'config.yaml'), `
+server:
+  port: 2398
+dataDir: ./data
+cacheDir: ./cache
+scan:
+  stableSeconds: 1
+tools:
+  ffmpeg: ${FFMPEG}
+  ffprobe: ${FFPROBE}
+libraries:
+  - id: lib
+    name: Test Library
+    path: ./lib
+    writable: true
+  - id: ro
+    name: Read Only
+    path: ./readonly
+    writable: false
+`);
+}
+
+await setup();

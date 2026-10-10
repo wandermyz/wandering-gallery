@@ -1,0 +1,15 @@
+{
+  "1": { "class_type": "LoadImage", "inputs": { "image": "pose.png" } },
+  "2": { "class_type": "DepthAnythingV2Preprocessor", "inputs": { "image": ["1", 0], "ckpt_name": "depth_anything_v2_vitl.pth", "resolution": 1024 } },
+  "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "illustrious_v17.safetensors" } },
+  "20": { "class_type": "LoraLoader", "inputs": { "model": ["4", 0], "clip": ["4", 1], "lora_name": "style_watercolor.safetensors", "strength_model": 0.8, "strength_clip": 0.6 } },
+  "21": { "class_type": "LoraLoader", "inputs": { "model": ["20", 0], "clip": ["20", 1], "lora_name": "detail_tweaker.safetensors", "strength_model": 0.4, "strength_clip": 0.4 } },
+  "5": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["21", 1], "text": "1girl, sitting on a beach, sunset" } },
+  "6": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["21", 1], "text": "worst quality, bad hands" } },
+  "7": { "class_type": "ControlNetLoader", "inputs": { "control_net_name": "controlnet-union-sdxl.safetensors" } },
+  "9": { "class_type": "ControlNetApplyAdvanced", "inputs": { "positive": ["5", 0], "negative": ["6", 0], "control_net": ["7", 0], "image": ["2", 0], "strength": 0.6, "start_percent": 0.0, "end_percent": 0.7 } },
+  "10": { "class_type": "EmptyLatentImage", "inputs": { "width": 832, "height": 1216, "batch_size": 1 } },
+  "11": { "class_type": "KSampler", "inputs": { "model": ["21", 0], "positive": ["9", 0], "negative": ["9", 1], "latent_image": ["10", 0], "seed": 777, "steps": 30, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "karras", "denoise": 1.0 } },
+  "12": { "class_type": "VAEDecode", "inputs": { "samples": ["11", 0], "vae": ["4", 2] } },
+  "13": { "class_type": "SaveImage", "inputs": { "images": ["12", 0], "filename_prefix": "beach" } }
+}

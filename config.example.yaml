@@ -1,0 +1,44 @@
+# wandering-gallery configuration.
+# Copy to ~/.config/wandering-gallery/config.yaml and edit.
+# Relative paths are resolved against this file's directory; ~ is expanded.
+
+server:
+  host: 127.0.0.1        # keep on localhost; expose with Tailscale Serve
+  port: 2334
+  # Extra Host header values allowed to reach the app (localhost is always allowed).
+  # Add your tailnet hostname, e.g. my-pc.tailnet-name.ts.net
+  allowedHosts: []
+
+# SQLite database and trash live here (default: ~/.local/share/wandering-gallery).
+# dataDir: ~/.local/share/wandering-gallery
+# Thumbnails/previews; safe to delete at any time (default: ~/.cache/wandering-gallery).
+# cacheDir: ~/.cache/wandering-gallery
+
+libraries:
+  - id: comfyui            # unique, lowercase letters/digits/-/_
+    name: ComfyUI Outputs
+    path: /path/to/ComfyUI/output
+    recursive: true        # include subfolders
+    writable: true         # allow moving files to the trash
+
+  - id: inputs
+    name: ComfyUI Inputs
+    path: /path/to/ComfyUI/input
+    recursive: true
+    writable: false
+
+scan:
+  stableSeconds: 5         # a file must be unchanged this long before indexing/deleting
+  intervalMinutes: 60      # periodic safety-net rescan (file watching handles normal changes)
+  usePolling: false        # set true for network filesystems where inotify does not work
+
+trash:
+  retentionDays: 7         # trashed files are permanently deleted after this many days
+
+thumbnails:
+  size: 360
+  quality: 78
+
+tools:
+  ffmpeg: ffmpeg           # used for video thumbnails
+  ffprobe: ffprobe         # used for video metadata

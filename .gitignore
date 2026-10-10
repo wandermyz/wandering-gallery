@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.tmp/
+*.db
+*.db-wal
+*.db-shm
+config.yaml
+!config.example.yaml
+.env
+dev-config.yaml

@@ -1,0 +1,181 @@
+export interface Library {
+  id: string;
+  name: string;
+  writable: boolean;
+  recursive: boolean;
+  count: number;
+  images: number;
+  videos: number;
+  available: boolean;
+  error: string | null;
+  scanning: boolean;
+  lastScanMs: number | null;
+}
+
+export interface Asset {
+  id: number;
+  library: string;
+  path: string;
+  folder: string;
+  name: string;
+  kind: 'image' | 'video';
+  mime: string;
+  size: number;
+  mtimeMs: number;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  playable: 'yes' | 'partial' | 'no' | 'unknown';
+  animated: boolean;
+  hasMeta: boolean;
+  indexState: 'pending' | 'done' | 'error';
+  indexError: string | null;
+  favorite: boolean;
+  rating: number;
+  status: 'ready' | 'missing' | 'trashed';
+  trashedAtMs: number | null;
+  v: string;
+  needsPreview: boolean;
+  libraryName?: string;
+  writable?: boolean;
+  expiresAtMs?: number;
+}
+
+export interface Folder {
+  path: string;
+  name: string;
+  count: number;
+  latestMs: number;
+  cover: { id: number; v: string } | null;
+}
+
+export type Scalar = string | number | boolean;
+
+export interface Summary {
+  source: 'comfyui' | 'a1111' | 'unknown';
+  positive: string[];
+  negative: string[];
+  otherText: string[];
+  samplers: {
+    nodeId: string; classType: string; title?: string; seed?: Scalar; steps?: Scalar; cfg?: Scalar;
+    sampler?: Scalar; scheduler?: Scalar; denoise?: Scalar; positive?: string; negative?: string;
+  }[];
+  models: { kind: string; name: string; nodeId?: string }[];
+  loras: { name: string; strengthModel?: number; strengthClip?: number }[];
+  params: Record<string, Scalar>;
+  nodeTypes: string[];
+}
+
+export interface MetadataResponse {
+  indexState: string;
+  indexError: string | null;
+  summary: Summary | null;
+  extra: Record<string, string>;
+  parameters: string | null;
+  hasPrompt: boolean;
+  hasWorkflow: boolean;
+  promptBytes: number;
+  workflowBytes: number;
+}
+
+export interface Page {
+  items: Asset[];
+  next: string | null;
+  total?: number;
+}
+
+export interface Query {
+  library?: string;
+  folder?: string;
+  recursive?: boolean;
+  favorite?: boolean;
+  minRating?: number;
+  kind?: 'image' | 'video';
+  order?: 'asc' | 'desc';
+}
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+let csrf: string | null = null;
+
+async function session(): Promise<string> {
+  if (csrf) return csrf;
+  const r = await fetch('/api/session', { cache: 'no-store' });
+  csrf = ((await r.json()) as { csrf: string }).csrf;
+  return csrf;
+}
+
+async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (method !== 'GET') {
+    headers['X-CSRF-Token'] = await session();
+    headers['Content-Type'] = 'application/json';
+  }
+  let r: Response;
+  try {
+    r = await fetch(url, { method, headers, body: body === undefined ? (method !== 'GET' ? '{}' : undefined) : JSON.stringify(body) });
+  } catch {
+    throw new ApiError('Network error. Check your connection.', 0);
+  }
+  if (!r.ok) {
+    let msg = `${r.status} ${r.statusText}`;
+    try {
+      msg = ((await r.json()) as { error?: string }).error ?? msg;
+    } catch {
+      /* not json */
+    }
+    // The server restarted and rotated its token: fetch a new one and retry once.
+    if (r.status === 403 && /csrf/i.test(msg) && !retried) {
+      csrf = null;
+      return request<T>(method, url, body, true);
+    }
+    throw new ApiError(msg, r.status);
+  }
+  return (await r.json()) as T;
+}
+
+function qs(params: Record<string, string | number | boolean | undefined | null>): string {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '' || v === false) continue;
+    u.set(k, v === true ? '1' : String(v));
+  }
+  const s = u.toString();
+  return s ? `?${s}` : '';
+}
+
+export const api = {
+  libraries: () => request<{ libraries: Library[] }>('GET', '/api/libraries'),
+  status: () => request<{ pending: number; scanning: boolean; current: string | null; trash: number; trashRetentionDays: number }>('GET', '/api/status'),
+  folders: (library: string, folder: string) => request<{ folders: Folder[] }>('GET', `/api/folders${qs({ library, folder })}`),
+  assets: (q: Query, cursor?: string | null, limit = 120) =>
+    request<Page>('GET', `/api/assets${qs({
+      library: q.library, folder: q.folder, recursive: q.recursive === false ? '0' : undefined,
+      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, order: q.order === 'asc' ? 'asc' : undefined,
+      cursor, limit,
+    })}`),
+  asset: (id: number) => request<Asset>('GET', `/api/assets/${id}`),
+  metadata: (id: number) => request<MetadataResponse>('GET', `/api/assets/${id}/metadata`),
+  raw: async (id: number, which: 'prompt' | 'workflow') => {
+    const r = await fetch(`/api/assets/${id}/raw/${which}`);
+    if (!r.ok) throw new ApiError('not available', r.status);
+    return r.text();
+  },
+  favorite: (id: number, favorite: boolean) => request<Asset>('POST', `/api/assets/${id}/favorite`, { favorite }),
+  rate: (id: number, rating: number) => request<Asset>('POST', `/api/assets/${id}/rating`, { rating }),
+  trash: (a: Asset) => request<Asset>('POST', `/api/assets/${a.id}/trash`, { size: a.size, mtimeMs: a.mtimeMs }),
+  trashList: () => request<{ retentionDays: number; items: Asset[] }>('GET', '/api/trash'),
+  restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),
+  purge: (id: number) => request<{ ok: true }>('POST', `/api/trash/${id}/purge`),
+  rescan: (library?: string) => request<{ ok: true }>('POST', '/api/rescan', library ? { library } : {}),
+};
+
+export const thumbUrl = (a: { id: number; v: string }) => `/api/assets/${a.id}/thumb?v=${a.v}`;
+export const fileUrl = (a: { id: number; v: string }) => `/api/assets/${a.id}/file?v=${a.v}`;
+export const displayUrl = (a: Asset) => (a.needsPreview ? `/api/assets/${a.id}/preview?v=${a.v}` : fileUrl(a));
