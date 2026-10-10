@@ -199,6 +199,10 @@ function scalarText(v: unknown): string {
   return String(v);
 }
 
+/** Unsaved caption edits by asset id, so closing the panel or viewer does not lose them.
+ *  `base` is the on-disk caption the edit started from. */
+const captionDrafts = new Map<number, { text: string; base: string }>();
+
 function CaptionSection({ asset: a }: { asset: Asset }) {
   const [cap, setCap] = useState<CaptionResponse | null>(null);
   const [draft, setDraft] = useState('');
@@ -213,13 +217,22 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
   draftRef.current = draft;
   const dirty = !!cap && draft !== (cap.txt ?? '');
 
-  const apply = (c: CaptionResponse) => {
+  // `restore` brings back an unsaved edit; flag it stale if the file changed underneath it.
+  const apply = (c: CaptionResponse, restore = false) => {
+    const saved = restore ? captionDrafts.get(a.id) : undefined;
+    if (!restore) captionDrafts.delete(a.id);
     setCap(c);
-    setDraft(c.txt ?? '');
-    setStale(false);
+    setDraft(saved ? saved.text : c.txt ?? '');
+    setStale(!!saved && saved.base !== (c.txt ?? ''));
   };
-  const load = () =>
-    api.caption(a.id).then(apply, (e) => setError((e as Error).message));
+  const load = (restore = true) =>
+    api.caption(a.id).then((c) => apply(c, restore), (e) => setError((e as Error).message));
+  const edit = (text: string) => {
+    setDraft(text);
+    const base = cap?.txt ?? '';
+    if (text === base) captionDrafts.delete(a.id);
+    else captionDrafts.set(a.id, { text, base: captionDrafts.get(a.id)?.base ?? base });
+  };
 
   useEffect(() => {
     setCap(null);
@@ -247,7 +260,8 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
     setError(null);
     setNotice(null);
     try {
-      apply(await api.captionAction(a.id, action, cap, extra));
+      // Only a save consumes the edit; other actions keep an unsaved draft.
+      apply(await api.captionAction(a.id, action, cap, extra), action !== 'save');
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setNotice((e as Error).message);
@@ -280,7 +294,7 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
       {stale && (
         <p class="cap-note cap-warn">
           The caption changed on disk.{' '}
-          <button type="button" class="chip-btn" onClick={() => void load()}>Discard my edit and reload</button>
+          <button type="button" class="chip-btn" onClick={() => void load(false)}>Discard my edit and reload</button>
         </p>
       )}
       {error && <p class="error-text cap-note">{error}</p>}
@@ -292,7 +306,7 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
         readOnly={ro}
         disabled={busy}
         spellcheck={false}
-        onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+        onInput={(e) => edit((e.target as HTMLTextAreaElement).value)}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && dirty) {

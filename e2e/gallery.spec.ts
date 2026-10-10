@@ -257,6 +257,11 @@ test('caption sidecars can be edited in the details panel', async ({ page }, inf
   await box.fill('');
   await box.pressSequentially(caption);
   await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
+  // An unsaved edit survives closing and reopening the panel.
+  await page.getByRole('button', { name: 'Close details' }).click();
+  await expect(box).toHaveCount(0);
+  await page.getByRole('button', { name: 'Details and metadata' }).click();
+  await expect(box).toHaveValue(caption);
   await section.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(section.locator('.cap-pill')).toHaveText('Edited');
   expect(fs.readFileSync(path.join(LIB, 'portraits', 'p1.txt'), 'utf8')).toBe(caption);
