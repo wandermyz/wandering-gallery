@@ -1,10 +1,10 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type DatasetResult, type Folder, type Library, type Query } from './api';
-import { Grid, type Density } from './Grid';
-import { Viewer } from './Viewer';
-import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './ui';
-import { CAPTION_EVENT, cx, formatBytes, formatDate } from './util';
+import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type DatasetResult, type Folder, type Library, type Query } from './gallery/api';
+import { Grid, type Density } from './gallery/Grid';
+import { Viewer } from './gallery/Viewer';
+import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './common/ui';
+import { CAPTION_EVENT, cx, formatBytes, formatDate } from './common/util';
 import './styles.css';
 
 // ---- URL state ------------------------------------------------------------------
