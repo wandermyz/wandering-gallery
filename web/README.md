@@ -45,6 +45,8 @@ saved under an old name gets a fresh entry and doesn't inherit the old rating.
   `node:sqlite`).
 - `ffmpeg` and `ffprobe` on the PATH or configured in the config file (only
   needed for video thumbnails and video metadata).
+- For the Generate section: a running ComfyUI and
+  [comfy-cli](https://github.com/Comfy-Org/comfy-cli) on the PATH.
 
 ## Install
 
@@ -206,6 +208,57 @@ asked to cancel, replace, or keep both. *Replace* moves the existing file and it
 sidecars to the trash, and *Keep both* adds a `-2`, `-3`, ... suffix. Moving
 needs a writable library. If the dataset's images
 folder is itself a library, a moved file keeps its rating and favorite.
+
+### Generating images
+
+*Generate → WAI-Illustrious · prompt to tags* turns a description (Chinese or
+English) into Danbooru tags with Qwen inside ComfyUI, then renders them with
+WAI-Illustrious:
+
+1. Type the description and choose how many **tag variations** you want, then
+   *Generate tags*. Variation 1 follows the description; the others ask for a
+   distinct-looking character (random suggested traits, sampling on).
+2. Edit any variation's tags, regenerate or remove single ones.
+3. Choose **images per variation** and *Generate*. Every variation × image is a
+   ComfyUI job with its own random seed. Progress and finished images show under
+   *Runs*; tapping one opens it in the gallery viewer. Runs are kept in server
+   memory (they survive closing the page, not a restart), and *Reuse* puts a run's
+   description and tags back into the form.
+
+Each PNG carries the UI workflow, the source description and the tags, so it can
+be dragged back into ComfyUI.
+
+ComfyUI is driven through `comfy-cli` (`run`, `jobs status/watch/cancel`,
+`system-stats`); only the image jobs are posted to ComfyUI's `/prompt` directly,
+because `comfy-cli run` can't attach that PNG metadata. If ComfyUI isn't running,
+the page says so; the app never starts it.
+
+The workflow graphs are in `comfyui/workflows/` with every prompt blanked. The
+prompt texts are local only, in
+`~/.config/wandering-gallery/prompts/wai-illustrious-tags.yaml`:
+
+```yaml
+systemPrompt: |-          # tagger system prompt (Qwen)
+  ...
+variationInstruction: |-  # appended for variations 2..N
+  ...
+traits:                   # one random entry per list is suggested to variations 2..N
+  - [<hair color>, <hair color>, ...]
+  - [<eye color>, <eye color>, ...]
+qualityTags: ...          # put in front of the tags
+negativePrompt: ...
+```
+
+The file is read on every request, so edits apply without a restart. Settings
+(all optional) go under `generate:` in the config:
+
+```yaml
+generate:
+  comfyui: http://127.0.0.1:8188   # ComfyUI server
+  comfyCli: comfy-cli              # comfy-cli executable
+  outputLibrary: comfyui           # library holding ComfyUI's output folder
+  promptsDir: ~/.config/wandering-gallery/prompts
+```
 
 ## Supported formats
 

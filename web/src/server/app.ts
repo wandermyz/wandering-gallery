@@ -7,6 +7,8 @@ import type { AppConfig } from './config.js';
 import { Captions, CAPTION_STATUSES, parseCaptionRequest } from './captions.js';
 import { CONFLICT_CHOICES, Datasets, type ConflictChoice, type DatasetMode } from './datasets.js';
 import { CAPTION_JOIN, type AssetRow, type Db } from './db.js';
+import { registerGenerate } from './generate/routes.js';
+import type { ComfyClient } from './generate/comfy.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { videoPlayability, mediaType } from './media.js';
 import type { GenerationSummary } from './metadata/comfyui.js';
@@ -22,6 +24,8 @@ export interface AppDeps {
   webRoot?: string | null;
   /** A pino logger instance, or false to disable request logging. */
   logger?: FastifyBaseLogger | false;
+  /** ComfyUI access for the generate flows (tests pass a fake). */
+  comfy?: ComfyClient;
 }
 
 const PAGE_MAX = 500;
@@ -504,6 +508,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     return { ok: true };
   });
+
+  registerGenerate(app, cfg, db, deps.comfy);
 
   // ---- Live updates (Server-Sent Events) ------------------------------------------
 

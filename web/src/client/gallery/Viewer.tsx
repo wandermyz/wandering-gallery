@@ -201,8 +201,11 @@ export function Viewer(props: ViewerProps) {
 
   // ---- pointer gestures ---------------------------------------------------------------------
 
+  // Re-attached once the stage exists: a deep-linked asset may render the empty state first.
+  const hasStage = !!asset;
   useEffect(() => {
-    const stage = stageRef.current!;
+    const stage = stageRef.current;
+    if (!stage) return;
     const pts = new Map<number, { x: number; y: number }>();
     let mode: 'none' | 'pending' | 'swipe' | 'dismiss' | 'pan' | 'pinch' = 'none';
     let start = { x: 0, y: 0, t: 0 };
@@ -399,7 +402,7 @@ export function Viewer(props: ViewerProps) {
       stage.removeEventListener('gesturechange', prevent);
       if (tapTimer) clearTimeout(tapTimer);
     };
-  }, [go]);
+  }, [go, hasStage]);
 
   // Clear dismiss-gesture styling when switching assets.
   useLayoutEffect(() => {

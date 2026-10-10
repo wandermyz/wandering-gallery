@@ -8,7 +8,10 @@ import { SectionSwitcher } from './nav';
  * holding the section switcher (phones) above the section's own navigation.
  */
 export function SectionPage({ title, sub, drawerTitle, nav, actions, children }: {
-  title: string; sub?: string; drawerTitle: string; nav?: ComponentChildren; actions?: ComponentChildren; children: ComponentChildren;
+  title: string; sub?: string; drawerTitle: string;
+  /** The drawer's own navigation; a function receives `close` for its links. */
+  nav?: ComponentChildren | ((close: () => void) => ComponentChildren);
+  actions?: ComponentChildren; children: ComponentChildren;
 }) {
   const [menu, setMenu] = useState(false);
   return (
@@ -24,7 +27,7 @@ export function SectionPage({ title, sub, drawerTitle, nav, actions, children }:
       <main class="content">{children}</main>
       <Sheet open={menu} onClose={() => setMenu(false)} title={drawerTitle} class="sheet-left">
         <SectionSwitcher onPick={() => setMenu(false)} />
-        {nav}
+        {typeof nav === 'function' ? nav(() => setMenu(false)) : nav}
       </Sheet>
     </div>
   );

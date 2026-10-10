@@ -36,6 +36,18 @@ async function setup() {
   }, null, 2));
   if (hasFfmpeg) makeVideo(path.join(lib, 'video', 'clip_00001_.mp4'), { seconds: 3, metadata: { prompt: fixture('wan-video.prompt.json').replace(/\s+/g, ' ') } });
   await makePng(path.join(ro, 'locked.png'), { color: '#777777' });
+  // Generate: output folder of the fake ComfyUI (a library hidden from All media) and the
+  // local prompts file.
+  fs.mkdirSync(path.join(root, 'comfy-out'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'prompts'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'prompts', 'wai-illustrious-tags.yaml'), `
+systemPrompt: Turn the description into tags.
+variationInstruction: Make a distinct character.
+traits:
+  - [red hair, blue hair]
+qualityTags: masterpiece
+negativePrompt: worst quality
+`);
 
   ageAll(root, 3600);
   // Distinct mtimes so ordering is deterministic: gen_00001_ is the newest.
@@ -60,6 +72,11 @@ scan:
   stableSeconds: 1
 datasets:
   root: ./datasets
+generate:
+  comfyui: http://127.0.0.1:2397
+  comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
+  outputLibrary: comfy
+  promptsDir: ./prompts
 tools:
   ffmpeg: ${FFMPEG}
   ffprobe: ${FFPROBE}
@@ -72,6 +89,11 @@ libraries:
     name: Read Only
     path: ./readonly
     writable: false
+  - id: comfy
+    name: Comfy Output
+    path: ./comfy-out
+    writable: false
+    showInAll: false
 `);
 }
 
