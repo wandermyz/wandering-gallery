@@ -1,11 +1,11 @@
-import { render } from 'preact';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type DatasetResult, type Folder, type Library, type Query } from './api';
 import { Grid, type Density } from './Grid';
 import { Viewer } from './Viewer';
-import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './ui';
-import { CAPTION_EVENT, cx, formatBytes, formatDate } from './util';
-import './styles.css';
+import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
+import { CAPTION_EVENT, cx, formatBytes, formatDate } from '../common/util';
+import { SectionSwitcher } from '../shell/nav';
 
 // ---- URL state ------------------------------------------------------------------
 // The gallery state lives in the URL so the back button, reloads and bookmarks work.
@@ -31,7 +31,7 @@ const CAPTION_FILTERS: ['' | CaptionFilter, string][] = [
 function readRoute(): Route {
   const p = new URLSearchParams(location.search);
   return {
-    view: location.pathname.startsWith('/trash') ? 'trash' : 'gallery',
+    view: location.pathname.startsWith('/gallery/trash') ? 'trash' : 'gallery',
     library: p.get('lib') ?? '',
     folder: p.get('folder') ?? '',
     favorite: p.get('fav') === '1',
@@ -56,7 +56,7 @@ function routeUrl(r: Route): string {
   if (r.flat) p.set('flat', '1');
   if (r.asset) p.set('a', String(r.asset));
   const s = p.toString();
-  return (r.view === 'trash' ? '/trash' : '/') + (s ? `?${s}` : '');
+  return (r.view === 'trash' ? '/gallery/trash' : '/gallery') + (s ? `?${s}` : '');
 }
 
 function useRoute() {
@@ -196,7 +196,7 @@ function useAssets(q: Query, enabled: boolean) {
 
 let toastSeq = 0;
 
-function App() {
+export default function GalleryApp() {
   const [route, nav] = useRoute();
   const [libraries, setLibraries] = useState<Library[] | null>(null);
   const [libError, setLibError] = useState<string | null>(null);
@@ -303,6 +303,7 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('viewer-open', !!route.asset);
   }, [route.asset]);
+  useEffect(() => () => document.documentElement.classList.remove('viewer-open'), []);
 
   const libById = useMemo(() => new Map((libraries ?? []).map((l) => [l.id, l])), [libraries]);
   const currentLib = route.library ? libById.get(route.library) : undefined;
@@ -599,6 +600,7 @@ function App() {
       )}
 
       <Sheet open={menu} onClose={() => setMenu(false)} title="Libraries" class="sheet-left">
+        <SectionSwitcher onPick={() => setMenu(false)} />
         <nav class="lib-list">
           <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && !route.favorite && 'active')}
             onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', favorite: false, asset: null }); }}>
@@ -871,4 +873,3 @@ function TrashView({ toast, ask, onChange }: {
   );
 }
 
-render(<App />, document.getElementById('app')!);

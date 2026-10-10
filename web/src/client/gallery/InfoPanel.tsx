@@ -1,8 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, ApiError, fileUrl, type Asset, type CaptionAction, type CaptionResponse, type Dataset, type DatasetConflict, type DatasetMode, type DatasetResult, type MetadataResponse, type Scalar, type Summary } from './api';
-import { CopyButton, Icon, IconButton, Spinner } from './ui';
-import { CAPTION_EVENT, CAPTION_LABELS, cx, formatBytes, formatDate, formatDuration } from './util';
+import { CopyButton, Icon, IconButton, Spinner } from '../common/ui';
+import { CAPTION_EVENT, CAPTION_LABELS, cx, formatBytes, formatDate, formatDuration } from '../common/util';
 
 function Section({ title, defaultOpen = true, children, extra }: { title: string; defaultOpen?: boolean; children: ComponentChildren; extra?: ComponentChildren }) {
   const key = `wg.sec.${title}`;

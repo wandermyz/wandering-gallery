@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { thumbUrl, type Asset } from './api';
-import { Icon, MiniRating } from './ui';
-import { CAPTION_LABELS, cx, dayLabel, formatDuration } from './util';
+import { Icon, MiniRating } from '../common/ui';
+import { CAPTION_LABELS, cx, dayLabel, formatDuration } from '../common/util';
 
 type Row =
   | { type: 'h'; top: number; label: string; key: string }

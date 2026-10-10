@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { displayUrl, fileUrl, thumbUrl, type Asset, type DatasetResult } from './api';
-import { Icon, IconButton, Spinner, Stars } from './ui';
+import { Icon, IconButton, Spinner, Stars } from '../common/ui';
 import { InfoPanel } from './InfoPanel';
-import { cx, formatBytes, formatDate, formatDuration } from './util';
+import { cx, formatBytes, formatDate, formatDuration } from '../common/util';
 
 interface Zoom {
   s: number;
