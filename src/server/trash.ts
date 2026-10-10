@@ -12,7 +12,7 @@ import { HttpError, isInside, resolveInside, resolveTargetInside } from './paths
  * unlink on the same filesystem (link fails with EEXIST if the target exists),
  * or exclusive copy + verify + unlink across filesystems.
  */
-async function moveFile(src: string, dest: string) {
+export async function moveFile(src: string, dest: string) {
   await fs.promises.mkdir(path.dirname(dest), { recursive: true });
   try {
     await fs.promises.link(src, dest);
@@ -31,11 +31,11 @@ async function moveFile(src: string, dest: string) {
   }
 }
 
-async function exists(p: string): Promise<boolean> {
+export async function exists(p: string): Promise<boolean> {
   return fs.promises.lstat(p).then(() => true, () => false);
 }
 
-function fsMessage(err: unknown): string {
+export function fsMessage(err: unknown): string {
   const code = (err as NodeJS.ErrnoException).code;
   switch (code) {
     case 'EACCES':
@@ -80,10 +80,36 @@ async function moveSidecars(fromDir: string, fromName: string, toDir: string, to
   }
 }
 
-async function sidecarsExist(dir: string, name: string): Promise<boolean> {
+export async function sidecarsExist(dir: string, name: string): Promise<boolean> {
   const n = sidecarNames(name);
   return (await exists(path.join(dir, n.txt))) || (await exists(path.join(dir, n.json)));
 }
+
+/**
+ * Real path of a live asset's file, refusing one that is still being written or
+ * that changed since the UI last saw it (stale state).
+ */
+export async function settledFile(indexer: Indexer, row: AssetRow, expected?: { size?: number; mtimeMs?: number }): Promise<string> {
+  const state = indexer.libs.get(row.library_id);
+  if (!state) throw new HttpError('unknown library', 404);
+  const abs = await resolveInside(state.cfg.path, row.rel_path);
+  const st = await fs.promises.stat(abs);
+  if (!st.isFile()) throw new HttpError('not a regular file', 400);
+  const age = Date.now() - st.mtimeMs;
+  if (age < indexer.stableMs || (age < 10 * 60_000 && !(await looksComplete(abs).catch(() => false)))) {
+    throw new HttpError('This file is still being written. Try again in a moment.', 409);
+  }
+  if (st.size !== row.size || Math.floor(st.mtimeMs) !== row.mtime_ms ||
+      (expected?.size !== undefined && expected.size !== row.size) ||
+      (expected?.mtimeMs !== undefined && expected.mtimeMs !== row.mtime_ms)) {
+    void indexer.scanLibrary(row.library_id);
+    throw new HttpError('The file changed on disk. Refresh and try again.', 409);
+  }
+  return abs;
+}
+
+/** Files replaced by "Add to dataset"; library ids cannot start with '_', so this never clashes. */
+const REPLACED_DIR = '_replaced';
 
 export class Trash {
   readonly root: string;
@@ -103,30 +129,16 @@ export class Trash {
     return this.indexer.exclusive(() => this.doTrash(id, expected));
   }
 
-  private async doTrash(id: number, expected?: { size?: number; mtimeMs?: number }): Promise<AssetRow> {
+  /** trash() for a caller that already runs inside indexer.exclusive(). */
+  async doTrash(id: number, expected?: { size?: number; mtimeMs?: number }): Promise<AssetRow> {
     const row = this.db.asset(id);
     if (!row || row.status !== 'ready') throw new HttpError('asset not found', 404);
     const lib = this.library(row.library_id);
     if (!lib.cfg.writable) throw new HttpError(`Library "${lib.cfg.name}" is read-only`, 403);
 
-    const abs = await resolveInside(lib.cfg.path, row.rel_path);
+    const abs = await settledFile(this.indexer, row, expected);
     const lst = await fs.promises.lstat(path.join(lib.realRoot ?? lib.cfg.path, ...row.rel_path.split('/')));
     if (lst.isSymbolicLink()) throw new HttpError('Symlinked files cannot be deleted from the gallery', 400);
-    const st = await fs.promises.stat(abs);
-    if (!st.isFile()) throw new HttpError('not a regular file', 400);
-
-    // Guard against deleting something that is still being written.
-    const age = Date.now() - st.mtimeMs;
-    if (age < this.indexer.stableMs || (age < 10 * 60_000 && !(await looksComplete(abs).catch(() => false)))) {
-      throw new HttpError('This file is still being written. Try again in a moment.', 409);
-    }
-    // Guard against acting on stale UI state (file replaced since it was displayed).
-    if (st.size !== row.size || Math.floor(st.mtimeMs) !== row.mtime_ms ||
-        (expected?.size !== undefined && expected.size !== row.size) ||
-        (expected?.mtimeMs !== undefined && expected.mtimeMs !== row.mtime_ms)) {
-      void this.indexer.scanLibrary(row.library_id);
-      throw new HttpError('The file changed on disk. Refresh and try again.', 409);
-    }
 
     const dest = path.join(this.root, row.library_id, `${row.id}-${Date.now()}`, path.posix.basename(row.rel_path));
     // Record where the file is going first, so a crash mid-move can be reconciled at startup.
@@ -163,7 +175,8 @@ export class Trash {
     return this.indexer.exclusive(() => this.doRestore(id));
   }
 
-  private async doRestore(id: number): Promise<AssetRow> {
+  /** restore() for a caller that already runs inside indexer.exclusive(). */
+  async doRestore(id: number): Promise<AssetRow> {
     const row = this.db.asset(id);
     if (!row || row.status !== 'trashed') throw new HttpError('asset is not in the trash', 404);
     const lib = this.library(row.library_id);
@@ -263,9 +276,41 @@ export class Trash {
     this.db.run('DELETE FROM assets WHERE id = ?', row.id);
   }
 
+  /**
+   * Moves loose (unindexed) files out of `dir` into a fresh folder under the trash's
+   * `_replaced/` area; it expires with the retention period. Returns [from, to] pairs.
+   */
+  async stash(dir: string, names: string[], label: string): Promise<[string, string][]> {
+    const dest = path.join(this.root, REPLACED_DIR, `${Date.now()}-${label.replace(/[^\w.-]+/g, '_')}`);
+    const done: [string, string][] = [];
+    try {
+      for (const n of names) {
+        const from = path.join(dir, n);
+        if (!(await fs.promises.lstat(from)).isFile()) throw new HttpError(`"${n}" is not a regular file`, 409);
+        const to = path.join(dest, n);
+        await moveFile(from, to);
+        done.push([from, to]);
+      }
+    } catch (err) {
+      await this.unstash(done);
+      throw err;
+    }
+    return done;
+  }
+
+  async unstash(moved: [string, string][]) {
+    for (const [from, to] of [...moved].reverse()) await moveFile(to, from).catch(() => {});
+    if (moved.length) await fs.promises.rmdir(path.dirname(moved[0][1])).catch(() => {});
+  }
+
   /** Deletes trash items older than the retention period. */
   async purgeExpired(now = Date.now()): Promise<number> {
     const cutoff = now - this.cfg.trash.retentionDays * 86_400_000;
+    const replaced = path.join(this.root, REPLACED_DIR);
+    for (const d of await fs.promises.readdir(replaced).catch(() => [] as string[])) {
+      const t = Number(d.split('-')[0]);
+      if (Number.isFinite(t) && t < cutoff) await fs.promises.rm(path.join(replaced, d), { recursive: true, force: true }).catch(() => {});
+    }
     const rows = this.db.all<{ id: number }>(
       "SELECT id FROM assets WHERE status = 'trashed' AND trashed_at_ms < ?", cutoff,
     );

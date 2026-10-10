@@ -3,7 +3,8 @@ import path from 'node:path';
 
 /** An error that maps to an HTTP status (path violations, conflicts, ...). */
 export class HttpError extends Error {
-  constructor(message: string, readonly status = 403) {
+  /** `data` is merged into the JSON error body (e.g. details the client can act on). */
+  constructor(message: string, readonly status = 403, readonly data?: Record<string, unknown>) {
     super(message);
   }
 }

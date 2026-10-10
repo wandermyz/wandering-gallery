@@ -372,6 +372,29 @@ video.media { width: 100%; height: 100%; background: #000; }
 .kv dd { margin: 0; min-width: 0; }
 .file-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
+.ds-open { margin-top: 0; }
+.ds-picker { display: grid; gap: 10px; }
+.ds-note { margin: 0; }
+.ds-input {
+  width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg-3); color: var(--text); font: inherit; font-size: 16px;
+}
+.ds-input:focus { outline: none; border-color: var(--accent); }
+.ds-list { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
+.ds-item {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px;
+  background: var(--bg-3); text-align: left; font-size: 14px;
+}
+.ds-item:hover { background: #26262e; }
+.ds-item:disabled { opacity: .6; }
+.ds-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.ds-verb { font-size: 12px; font-weight: 650; color: var(--accent); }
+.ds-new .ds-name { color: var(--accent); }
+.ds-conflict { padding: 12px; border-radius: 10px; background: var(--bg-3); border-left: 3px solid var(--star); font-size: 14px; }
+.ds-conflict p { margin: 0 0 6px; }
+.ds-conflict p:last-child { margin: 0; font-size: 13px; }
+.ds-conflict .icon { vertical-align: -3px; color: var(--star); }
+
 .prompt { margin-bottom: 12px; border-radius: 12px; background: var(--bg-3); border-left: 3px solid #555; overflow: hidden; }
 .prompt-pos { border-left-color: #5bd69a; }
 .prompt-neg { border-left-color: #ff6b81; }

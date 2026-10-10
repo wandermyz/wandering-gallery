@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
+import { displayUrl, fileUrl, thumbUrl, type Asset, type DatasetResult } from './api';
 import { Icon, IconButton, Spinner, Stars } from './ui';
 import { InfoPanel } from './InfoPanel';
 import { cx, formatBytes, formatDate, formatDuration } from './util';
@@ -26,6 +26,7 @@ export interface ViewerProps {
   onRate: (a: Asset, rating: number) => void;
   onDelete: (a: Asset) => void;
   onShare: (a: Asset) => void;
+  onDataset: (a: Asset, r: DatasetResult) => void;
   writable: (a: Asset) => boolean;
 }
 
@@ -471,7 +472,7 @@ export function Viewer(props: ViewerProps) {
           />
         </footer>
       </div>
-      {info && <InfoPanel asset={asset} onClose={() => setInfo(false)} />}
+      {info && <InfoPanel asset={{ ...asset, writable }} onClose={() => setInfo(false)} onDataset={props.onDataset} />}
     </div>
   );
 }

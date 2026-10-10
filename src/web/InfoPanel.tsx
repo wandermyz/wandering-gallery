@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { api, ApiError, fileUrl, type Asset, type CaptionAction, type CaptionResponse, type MetadataResponse, type Scalar, type Summary } from './api';
+import { api, ApiError, fileUrl, type Asset, type CaptionAction, type CaptionResponse, type Dataset, type DatasetConflict, type DatasetMode, type DatasetResult, type MetadataResponse, type Scalar, type Summary } from './api';
 import { CopyButton, Icon, IconButton, Spinner } from './ui';
 import { CAPTION_EVENT, CAPTION_LABELS, cx, formatBytes, formatDate, formatDuration } from './util';
 
@@ -362,7 +362,151 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
   );
 }
 
-export function InfoPanel({ asset: a, onClose }: { asset: Asset; onClose: () => void }) {
+const MODE_KEY = 'wg.datasetMode';
+const LAST_KEY = 'wg.dataset';
+
+/** "Add to dataset": pick (or type a new) dataset and copy or move the file there with its sidecars. */
+function DatasetPicker({ asset: a, onDone, onClose }: { asset: Asset; onDone: (r: DatasetResult) => void; onClose: () => void }) {
+  const canMove = a.writable !== false;
+  const [mode, setMode] = useState<DatasetMode>(() => (localStorage.getItem(MODE_KEY) === 'copy' ? 'copy' : 'move'));
+  const [list, setList] = useState<Dataset[] | null>(null);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** Name already taken in the chosen dataset: waiting for cancel / replace / keep both. */
+  const [conflict, setConflict] = useState<{ dataset: string; create: boolean; existing: string[] } | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const effMode: DatasetMode = canMove ? mode : 'copy';
+
+  useEffect(() => {
+    api.datasets().then((r) => setList(r.datasets), (e) => setError((e as Error).message));
+    // Focusing would pop up the on-screen keyboard over the list on phones.
+    if (window.matchMedia('(pointer: fine)').matches) input.current?.focus();
+  }, []);
+
+  const q = query.trim();
+  const last = localStorage.getItem(LAST_KEY);
+  const matches = (list ?? [])
+    .filter((d) => d.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((x, y) => {
+      const rank = (d: Dataset) => (q ? (d.name.toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1) : d.name === last ? 0 : 1);
+      return rank(x) - rank(y);
+    });
+  const validNew = !!q && !q.startsWith('.') && !/[/\\]/.test(q) && q.length <= 100;
+  const canCreate = validNew && list !== null && !list.some((d) => d.name === q);
+  const verb = effMode === 'move' ? 'Move' : 'Copy';
+
+  const run = async (name: string, create: boolean, onConflict: DatasetConflict = 'ask') => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setConflict(null);
+    try {
+      const r = await api.addToDataset(a, name, effMode, create, onConflict);
+      localStorage.setItem(LAST_KEY, r.dataset);
+      onDone(r);
+    } catch (e) {
+      const c = e instanceof ApiError ? (e.data.conflict as { existing?: string[] } | undefined) : undefined;
+      if (c) setConflict({ dataset: name, create, existing: c.existing ?? [] });
+      else setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  if (conflict) {
+    return (
+      <div class="ds-picker" role="alertdialog" aria-label="File already exists">
+        <div class="ds-conflict">
+          <p><Icon name="alert" size={16} /> <strong class="break">{a.name}</strong> already exists in <strong>{conflict.dataset}</strong>.</p>
+          {conflict.existing.some((n) => n !== a.name) && (
+            <p class="muted">Existing: {conflict.existing.join(', ')}</p>
+          )}
+          <p class="muted">Replace moves the existing file and its captions to the trash.</p>
+        </div>
+        <div class="cap-actions">
+          <button type="button" class="btn btn-sm" onClick={() => setConflict(null)}>Cancel</button>
+          <button type="button" class="btn btn-sm btn-danger" onClick={() => void run(conflict.dataset, conflict.create, 'replace')}>Replace</button>
+          <button type="button" class="btn btn-sm btn-primary" onClick={() => void run(conflict.dataset, conflict.create, 'rename')}>Keep both</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div class="ds-picker">
+      <div class="seg" role="radiogroup" aria-label="Move or copy">
+        {(['move', 'copy'] as const).map((m) => (
+          <button
+            type="button"
+            key={m}
+            role="radio"
+            aria-checked={effMode === m}
+            class={cx(effMode === m && 'on')}
+            disabled={busy || (m === 'move' && !canMove)}
+            onClick={() => {
+              setMode(m);
+              localStorage.setItem(MODE_KEY, m);
+            }}
+          >
+            {m === 'move' ? 'Move' : 'Copy'}
+          </button>
+        ))}
+      </div>
+      {!canMove && <p class="muted cap-note ds-note"><Icon name="lock" size={12} /> This library is read-only, so the file can only be copied.</p>}
+      <input
+        ref={input}
+        class="ds-input"
+        type="text"
+        value={query}
+        placeholder="Find or create a dataset"
+        aria-label="Dataset name"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck={false}
+        disabled={busy}
+        onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') onClose();
+          else if (e.key === 'Enter') {
+            e.preventDefault();
+            const exact = matches.find((d) => d.name === q);
+            if (exact || (!canCreate && matches[0])) void run((exact ?? matches[0]).name, false);
+            else if (canCreate) void run(q, true);
+          }
+        }}
+      />
+      {error && <p class="error-text cap-note ds-note">{error}</p>}
+      <div class="ds-list" role="listbox" aria-label="Datasets">
+        {list === null && !error && <Spinner />}
+        {matches.map((d) => (
+          <button type="button" class="ds-item" key={d.name} disabled={busy} onClick={() => void run(d.name, false)}>
+            <Icon name="folder" size={18} />
+            <span class="ds-name">{d.name}</span>
+            <span class="muted">{d.count.toLocaleString()}</span>
+            <span class="ds-verb">{verb}</span>
+          </button>
+        ))}
+        {canCreate && (
+          <button type="button" class="ds-item ds-new" disabled={busy} onClick={() => void run(q, true)}>
+            <Icon name="plus" size={18} />
+            <span class="ds-name">Create “{q}”</span>
+            <span class="ds-verb">{verb}</span>
+          </button>
+        )}
+        {list !== null && !matches.length && !canCreate && (
+          <p class="muted cap-note ds-note">{q ? 'Not a valid dataset name.' : 'No datasets yet. Type a name to create one.'}</p>
+        )}
+      </div>
+      {busy && <Spinner label={effMode === 'move' ? 'Moving…' : 'Copying…'} />}
+    </div>
+  );
+}
+
+export function InfoPanel({ asset: a, onClose, onDataset }: { asset: Asset; onClose: () => void; onDataset?: (a: Asset, r: DatasetResult) => void }) {
+  const [picking, setPicking] = useState(false);
+  useEffect(() => setPicking(false), [a.id]);
+
   const [meta, setMeta] = useState<MetadataResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -477,6 +621,25 @@ export function InfoPanel({ asset: a, onClose }: { asset: Asset; onClose: () => 
             <CopyButton text={a.path} label="Copy path" />
           </div>
         </Section>
+
+        {a.status === 'ready' && onDataset && (
+          <Section title="Dataset">
+            {picking ? (
+              <DatasetPicker
+                asset={a}
+                onClose={() => setPicking(false)}
+                onDone={(r) => {
+                  setPicking(false);
+                  onDataset(a, r);
+                }}
+              />
+            ) : (
+              <button type="button" class="btn btn-sm btn-block ds-open" onClick={() => setPicking(true)}>
+                <Icon name="plus" size={16} /> Add to dataset
+              </button>
+            )}
+          </Section>
+        )}
 
       </div>
     </aside>

@@ -40,6 +40,13 @@ scan:
 trash:
   retentionDays: 7         # trashed files are permanently deleted after this many days
 
+# Training datasets (wandering-lora layout). Every first-level folder of `root` is a
+# dataset; "Add to dataset" in the details panel copies or moves a file (and its
+# caption sidecars) into <root>/<dataset>/<subfolder>/.
+datasets:
+  root: ~/Datasets
+  subfolder: images        # '' to put files directly in the dataset folder
+
 thumbnails:
   size: 360
   quality: 78

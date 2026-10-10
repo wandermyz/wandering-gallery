@@ -5,6 +5,7 @@ import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance, t
 import fastifyStatic from '@fastify/static';
 import type { AppConfig } from './config.js';
 import { Captions, CAPTION_STATUSES, parseCaptionRequest } from './captions.js';
+import { CONFLICT_CHOICES, Datasets, type ConflictChoice, type DatasetMode } from './datasets.js';
 import { CAPTION_JOIN, type AssetRow, type Db } from './db.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { videoPlayability, mediaType } from './media.js';
@@ -77,6 +78,7 @@ function intParam(v: unknown, name: string, min: number, max: number, fallback?:
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { cfg, db, indexer, trash } = deps;
   const captions = new Captions(db, indexer);
+  const datasets = new Datasets(cfg, db, indexer, trash);
   const app = Fastify({
     ...(deps.logger ? { loggerInstance: deps.logger } : { logger: false }),
     logController: new LogController({ disableRequestLogging: true }),
@@ -127,7 +129,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
-    if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
+    if (err instanceof HttpError) return reply.code(err.status).send({ ...err.data, error: err.message });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ error: err.message });
     req.log.error(err);
     return reply.code(500).send({ error: 'internal error' });
@@ -441,6 +443,32 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       mtimeMs: typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined,
     };
     return assetJson(await trash.trash(id, expected));
+  });
+
+  app.get('/api/datasets', async (_req, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { root: datasets.root, datasets: await datasets.list() };
+  });
+
+  app.post('/api/assets/:id/dataset', async (req) => {
+    const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
+    const body = (req.body ?? {}) as { dataset?: unknown; mode?: unknown; create?: unknown; onConflict?: unknown; size?: unknown; mtimeMs?: unknown };
+    if (body.mode !== 'move' && body.mode !== 'copy') throw new HttpError('mode must be "move" or "copy"', 400);
+    const onConflict = body.onConflict ?? 'ask';
+    if (!(CONFLICT_CHOICES as readonly unknown[]).includes(onConflict)) throw new HttpError(`onConflict must be one of ${CONFLICT_CHOICES.join(', ')}`, 400);
+    const r = await datasets.add(id, body.dataset as string, body.mode as DatasetMode, {
+      create: body.create === true,
+      onConflict: onConflict as ConflictChoice,
+      expected: {
+        size: typeof body.size === 'number' ? body.size : undefined,
+        mtimeMs: typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined,
+      },
+    });
+    const lib = r.row ? indexer.libs.get(r.row.library_id) : undefined;
+    return {
+      mode: r.mode, dataset: r.dataset, created: r.created, name: r.name, replaced: r.replaced,
+      asset: r.row ? { ...assetJson(r.row), libraryName: lib?.cfg.name ?? r.row.library_id, writable: !!lib?.cfg.writable } : null,
+    };
   });
 
   app.get('/api/trash', async () => {

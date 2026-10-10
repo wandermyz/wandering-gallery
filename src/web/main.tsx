@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query } from './api';
+import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type DatasetResult, type Folder, type Library, type Query } from './api';
 import { Grid, type Density } from './Grid';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './ui';
@@ -160,7 +160,8 @@ function useAssets(q: Query, enabled: boolean) {
       setItems((cur) => {
         const gone = new Set(removed);
         const fresh = new Map(page.items.map((a) => [a.id, a]));
-        const kept = cur.filter((a) => !gone.has(a.id)).map((a) => fresh.get(a.id) ?? a);
+        // A removed id that still matches (moved within the view) stays.
+        const kept = cur.filter((a) => !gone.has(a.id) || fresh.has(a.id)).map((a) => fresh.get(a.id) ?? a);
         if (!kept.length) return page.items;
         const keptIds = new Set(kept.map((a) => a.id));
         // New items newer than the current head go first (or last for ascending order).
@@ -388,6 +389,34 @@ function App() {
         },
       },
     });
+  };
+
+  const onDataset = (a: Asset, r: DatasetResult) => {
+    const where = `${r.dataset}${r.created ? ' (new)' : ''}`;
+    const renamed = (r.name !== a.name ? ` as ${r.name}` : '') + (r.replaced ? ' (replaced the old one)' : '');
+    void loadLibraries();
+    if (r.mode === 'copy') {
+      toast(`Copied to ${where}${renamed}`);
+      return;
+    }
+    const moved = r.asset;
+    const inView = !!moved && (route.library
+      ? moved.library === route.library && (!route.folder || moved.folder === route.folder ||
+        (!route.flat && moved.folder.startsWith(route.folder + '/')))
+      : !!libById.get(moved.library)?.showInAll);
+    if (moved && inView) {
+      list.patch(moved);
+    } else {
+      // Gone from this view: step the viewer to a neighbour first, as for a delete.
+      const idx = list.items.findIndex((x) => x.id === a.id);
+      if (route.asset === a.id) {
+        const neighbour = idx < 0 ? null : list.items[idx + 1] ?? list.items[idx - 1];
+        if (neighbour) nav({ asset: neighbour.id }, 'replace');
+        else closeViewer();
+      }
+      list.remove(a.id);
+    }
+    toast(`Moved to ${where}${renamed}`);
   };
 
   // The fetched original is kept so a second tap can share instantly: iOS only allows
@@ -690,6 +719,7 @@ function App() {
             onRate={onRate}
             onDelete={onDelete}
             onShare={onShare}
+            onDataset={onDataset}
             writable={(a) => !!libById.get(a.library)?.writable}
             libName={(id) => libById.get(id)?.name ?? id}
           />

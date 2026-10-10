@@ -25,6 +25,7 @@ const PATHS: Record<string, string> = {
   lock: 'M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z',
   sort: 'M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4',
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+  plus: 'M12 5v14M5 12h14',
 };
 
 const FILLED = new Set(['heart', 'star', 'play']);

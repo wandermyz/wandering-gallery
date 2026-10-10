@@ -96,6 +96,9 @@ libraries:
 
 trash:
   retentionDays: 7
+
+datasets:
+  root: ~/Datasets               # each subfolder is a training dataset
 ```
 
 | Location | Contents |
@@ -186,6 +189,19 @@ re-reads them whenever their size, mtime, or inode changes. Sidecars are never
 listed as media, and they move to the trash and back together with their
 image.
 
+### Adding to a training dataset
+
+Every first-level folder under `datasets.root` (default `~/Datasets`) is a
+dataset, in [wandering-lora](https://github.com/wandermyz/wandering-lora)'s
+layout. The details panel has an *Add to dataset* button: type to filter the
+existing datasets or to create a new one, pick *Move* or *Copy* (the choice is
+remembered), and the file goes to `<dataset>/images/` together with its caption
+sidecars. If the name is already taken (by the file or either sidecar), you're
+asked to cancel, replace, or keep both. *Replace* moves the existing file and its
+sidecars to the trash, and *Keep both* adds a `-2`, `-3`, ... suffix. Moving
+needs a writable library. If the dataset's images
+folder is itself a library, a moved file keeps its rating and favorite.
+
 ## Supported formats
 
 | | Formats | Notes |
@@ -212,9 +228,9 @@ raw `prompt`/`workflow` JSON is still stored and shown.
 ## Safety model
 
 - **Read-only by default.** Original files are opened for reading only.
-  Indexing, thumbnails, favorites, and ratings never write to them. The only
-  time a file moves is an explicit, confirmed delete. It's moved (`rename`)
-  into the trash folder and moved back on restore.
+  Indexing, thumbnails, favorites, and ratings never write to them. A file
+  only moves on an explicit delete (into the trash folder, and back on
+  restore) or an explicit *Add to dataset* with *Move*.
 - **Strict path confinement.** API requests refer to assets by numeric ID,
   never by path. Every file access is resolved with `realpath` and checked to
   be inside its library. Symlinks that point outside a library are ignored,
@@ -222,7 +238,9 @@ raw `prompt`/`workflow` JSON is still stored and shown.
 - **Writable flag.** Deleting from a library with `writable: false`, or editing
   a caption there, is rejected by the server, not just hidden in the UI.
   Caption sidecars (`.txt`, `.caption.json`) are the only files the gallery
-  ever writes inside a library.
+  ever writes inside a library. *Add to dataset* writes only inside
+  `datasets.root` and moves only out of writable libraries. A file is only
+  replaced when you choose *Replace*, and the old one goes to the trash.
 - **Files being generated.** ComfyUI writes images directly to their final
   name, and video muxers write the index last. A file is only indexed or
   deletable once its size and mtime have been stable for `stableSeconds` *and*
