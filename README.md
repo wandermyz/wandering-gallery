@@ -8,6 +8,7 @@ training from one mobile-friendly web app.
 | Folder | What it is |
 | --- | --- |
 | [`web/`](web/) | The web app (Node.js + Preact): the gallery today, plus generation and training sections as they arrive. See [`web/README.md`](web/README.md) for features, configuration, and development. |
+| [`lora/`](lora/) | `wlora`: local captioning and classification that prepares image datasets for LoRA training (Python, uv). Copied from [wandering-lora](https://github.com/wandermyz/wandering-lora) at `f6d81ec`; see [`lora/README.md`](lora/README.md). |
 | [`deploy/`](deploy/) | systemd user unit(s). |
 | [`scripts/`](scripts/) | `install.sh`: builds `web/` and installs or updates the service. |
 | [`docs/`](docs/) | Design notes and plans. |
