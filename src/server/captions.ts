@@ -97,14 +97,14 @@ export async function readSidecars(dir: string, mediaName: string): Promise<Side
 
 /**
  * Status as the pipeline would see it: a .txt that differs from the hash the json
- * recorded was edited by some other tool (human-protected), and a bare .txt with
- * no json is treated the same way.
+ * recorded was edited by some other tool (human-protected, and no longer the approved
+ * text), and a bare .txt with no json is treated the same way.
  */
 export function effectiveStatus(s: Pick<SidecarState, 'txt' | 'txtSha256' | 'json'>): CaptionStatus | null {
   if (!s.json) return s.txt !== null ? 'edited' : null;
   const raw = s.json.status;
   const status: CaptionStatus = (CAPTION_STATUSES as readonly unknown[]).includes(raw) ? (raw as CaptionStatus) : 'edited';
-  if (status === 'generated' && s.txtSha256 && s.json.caption_sha256 !== s.txtSha256) return 'edited';
+  if ((status === 'generated' || status === 'approved') && s.txtSha256 && s.json.caption_sha256 !== s.txtSha256) return 'edited';
   return status;
 }
 

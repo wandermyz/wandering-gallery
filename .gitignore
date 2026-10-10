@@ -11,3 +11,4 @@ config.yaml
 !config.example.yaml
 .env
 dev-config.yaml
+.claude/

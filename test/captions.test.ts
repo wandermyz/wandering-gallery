@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
+import { effectiveStatus } from '../src/server/captions.js';
 import type { AssetRow } from '../src/server/db.js';
 import { Indexer } from '../src/server/indexer.js';
 import { ageAll, makeEnv, makeJpeg, makePng, type Env } from './helpers.js';
@@ -332,5 +333,13 @@ describe('caption sidecars in the trash', () => {
     const tdir = path.dirname(path.join(env.trash.root, trashed.trash_path!));
     await env.trash.purge(trashed.id);
     expect(fs.existsSync(tdir)).toBe(false);
+  });
+
+  it('treats a .txt changed outside the tools as edited, even after approval', () => {
+    const json = { status: 'approved', caption_sha256: sha('a, b') };
+    expect(effectiveStatus({ txt: 'a, b', txtSha256: sha('a, b'), json })).toBe('approved');
+    expect(effectiveStatus({ txt: 'a, c', txtSha256: sha('a, c'), json })).toBe('edited');
+    expect(effectiveStatus({ txt: 'a', txtSha256: sha('a'), json: { status: 'needs_regen', caption_sha256: 'x' } })).toBe('needs_regen');
+    expect(effectiveStatus({ txt: 'a', txtSha256: sha('a'), json: null })).toBe('edited');
   });
 });
