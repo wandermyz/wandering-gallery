@@ -575,7 +575,7 @@ function App() {
             onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', favorite: false, asset: null }); }}>
             <Icon name="grid" />
             <span class="lib-name">All media</span>
-            <span class="lib-count">{libraries?.reduce((n, l) => n + l.count, 0).toLocaleString() ?? ''}</span>
+            <span class="lib-count">{libraries?.reduce((n, l) => n + (l.showInAll ? l.count : 0), 0).toLocaleString() ?? ''}</span>
           </button>
           <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && route.favorite && 'active')}
             onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', favorite: true, asset: null }); }}>

@@ -9,6 +9,8 @@ export interface LibraryConfig {
   path: string;
   recursive: boolean;
   writable: boolean;
+  /** Include this library in the cross-library views (All media, Favorites). */
+  showInAll: boolean;
 }
 
 export interface AppConfig {
@@ -117,6 +119,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       path: resolvePath(str(lib.path, `libraries[${i}].path`)),
       recursive: bool(lib.recursive, `libraries[${i}].recursive`, true),
       writable: bool(lib.writable, `libraries[${i}].writable`, false),
+      showInAll: bool(lib.showInAll, `libraries[${i}].showInAll`, true),
     };
   });
 

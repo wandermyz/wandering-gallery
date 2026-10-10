@@ -26,6 +26,11 @@ libraries:
     path: /path/to/ComfyUI/input
     recursive: true
     writable: false
+    showInAll: false       # keep out of "All media" and "Favorites" (default true)
+
+  # Folders on removable/mounted disks are fine: while unmounted the library shows as
+  # unavailable and keeps its index, ratings and favorites; it is picked up again
+  # within a minute of being mounted.
 
 scan:
   stableSeconds: 5         # a file must be unchanged this long before indexing/deleting

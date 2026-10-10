@@ -238,6 +238,28 @@ describe('scanning and indexing', () => {
     expect(state.error).toMatch(/unavailable/);
   });
 
+  it('keeps rows of a library whose filesystem is unmounted, and resumes when it is back', async () => {
+    env = await makeEnv();
+    await makePng(path.join(env.lib('main'), 'sub', 'a.png'));
+    ageAll(env.root);
+    await env.sync();
+    const state = env.indexer.libs.get('main')!;
+    // Unmounted, with the mount point folder left behind (empty).
+    fs.renameSync(env.lib('main'), env.lib('main') + '.mounted');
+    fs.mkdirSync(env.lib('main'));
+    state.rootDev = -1; // what a different filesystem at the same path looks like
+    await env.indexer.scanAll();
+    expect(state.realRoot).toBeNull();
+    expect(state.error).toMatch(/unmounted/);
+    expect(live(env).map((r) => r.rel_path)).toEqual(['sub/a.png']);
+    // Remounted.
+    fs.rmdirSync(env.lib('main'));
+    fs.renameSync(env.lib('main') + '.mounted', env.lib('main'));
+    await env.sync();
+    expect(state.realRoot).not.toBeNull();
+    expect(live(env).map((r) => r.rel_path)).toEqual(['sub/a.png']);
+  });
+
   it('keeps index rows for folders that become unreadable', async () => {
     if (process.getuid?.() === 0) return; // root ignores permissions
     env = await makeEnv();

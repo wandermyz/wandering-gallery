@@ -68,6 +68,23 @@ describe('HTTP API', () => {
     expect(flat.total).toBe(0);
   });
 
+  it('leaves libraries with showInAll: false out of All media and Favorites', async () => {
+    await setup([{ id: 'a' }, { id: 'hidden', showInAll: false }]);
+    await makePng(path.join(env.lib('a'), 'x.png'));
+    await makePng(path.join(env.lib('hidden'), 'y.png'), { color: '#123456' });
+    ageAll(env.root);
+    await env.sync();
+    for (const row of env.db.all<{ id: number }>("SELECT id FROM assets WHERE status = 'ready'")) {
+      expect((await post(`/api/assets/${row.id}/favorite`, { favorite: true })).statusCode).toBe(200);
+    }
+    const libs = (await app.inject({ url: '/api/libraries' })).json().libraries;
+    expect(libs.map((l: { id: string; showInAll: boolean }) => [l.id, l.showInAll])).toEqual([['a', true], ['hidden', false]]);
+    const names = async (qs: string) => (await app.inject({ url: `/api/assets${qs}` })).json().items.map((x: { name: string }) => x.name);
+    expect(await names('')).toEqual(['x.png']);
+    expect(await names('?favorite=1')).toEqual(['x.png']);
+    expect(await names('?library=hidden')).toEqual(['y.png']);
+  });
+
   it('updates favorites and ratings, and filters by them', async () => {
     await setup();
     await makePng(path.join(env.lib('main'), 'a.png'), { color: '#111111' });

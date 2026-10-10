@@ -175,7 +175,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         const s = indexer.libs.get(l.id)!;
         const c = counts.get(l.id);
         return {
-          id: l.id, name: l.name, writable: l.writable, recursive: l.recursive,
+          id: l.id, name: l.name, writable: l.writable, recursive: l.recursive, showInAll: l.showInAll,
           count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0,
           available: !!s.realRoot, error: s.error, scanning: s.scanning, lastScanMs: s.lastScanMs,
         };
@@ -247,6 +247,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         where.push('folder = ?');
         params.push(folder);
       }
+    } else {
+      // Cross-library views only cover libraries that opt in.
+      const ids = cfg.libraries.filter((l) => l.showInAll).map((l) => l.id);
+      where.push(ids.length ? `library_id IN (${ids.map(() => '?').join(',')})` : '0');
+      params.push(...ids);
     }
     if (q.favorite === '1') where.push('favorite = 1');
     const minRating = intParam(q.minRating, 'minRating', 0, 5, 0);

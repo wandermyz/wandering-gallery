@@ -22,7 +22,7 @@ libraries:
 `);
     const cfg = loadConfig(file);
     expect(cfg.libraries).toHaveLength(2);
-    expect(cfg.libraries[0]).toEqual({ id: 'comfyui', name: 'ComfyUI Outputs', path: path.join(dir, 'out'), recursive: true, writable: true });
+    expect(cfg.libraries[0]).toEqual({ id: 'comfyui', name: 'ComfyUI Outputs', path: path.join(dir, 'out'), recursive: true, writable: true, showInAll: true });
     // Libraries are read-only unless explicitly writable.
     expect(cfg.libraries[1]).toMatchObject({ id: 'inputs', path: '/srv/inputs', recursive: false, writable: false });
     expect(cfg.server).toEqual({ host: '127.0.0.1', port: 2334, allowedHosts: [] });
@@ -42,6 +42,7 @@ libraries:
     [{ libraries: [{ id: 'Bad Id', path: '/x' }] }, /must be lowercase/],
     [{ libraries: [{ id: 'a', path: '/x' }, { id: 'a', path: '/y' }] }, /duplicate library id/],
     [{ libraries: [{ id: 'a', path: '/x', writable: 'yes' }] }, /writable must be true or false/],
+    [{ libraries: [{ id: 'a', path: '/x', showInAll: 'no' }] }, /showInAll must be true or false/],
     [{ libraries: [{ id: 'a', path: '/x' }], server: { port: 99999 } }, /server.port/],
     [{ libraries: [{ id: 'a', path: '/x' }], trash: { retentionDays: -1 } }, /retentionDays/],
   ])('rejects invalid config %#', (raw, msg) => {

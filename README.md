@@ -92,6 +92,7 @@ libraries:
     path: /data/refs
     recursive: true
     writable: false              # browse/rate only
+    showInAll: false             # only shown when the library is opened directly
 
 trash:
   retentionDays: 7

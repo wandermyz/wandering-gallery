@@ -22,6 +22,8 @@ export interface Logger {
 export interface LibraryState {
   cfg: LibraryConfig;
   realRoot: string | null;
+  /** Device of `realRoot` when opened; a change means the filesystem was unmounted or swapped. */
+  rootDev: number | null;
   error: string | null;
   scanning: boolean;
   lastScanMs: number | null;
@@ -79,7 +81,7 @@ export class Indexer extends EventEmitter {
   constructor(readonly cfg: AppConfig, readonly db: Db, readonly log: Logger) {
     super();
     for (const lib of cfg.libraries) {
-      this.libs.set(lib.id, { cfg: lib, realRoot: null, error: null, scanning: false, lastScanMs: null, watcher: null });
+      this.libs.set(lib.id, { cfg: lib, realRoot: null, rootDev: null, error: null, scanning: false, lastScanMs: null, watcher: null });
     }
   }
 
@@ -124,14 +126,39 @@ export class Indexer extends EventEmitter {
       if (!st.isDirectory()) throw new Error('not a directory');
       await fs.promises.access(real, fs.constants.R_OK | fs.constants.X_OK);
       state.realRoot = real;
+      state.rootDev = st.dev;
       state.error = null;
       return true;
     } catch (err) {
-      state.realRoot = null;
-      state.error = `Library folder is unavailable: ${(err as NodeJS.ErrnoException).code ?? (err as Error).message}`;
-      this.log.warn({ library: state.cfg.id, path: state.cfg.path, err: (err as Error).message }, 'library unavailable');
+      this.setUnavailable(state, (err as NodeJS.ErrnoException).code ?? (err as Error).message);
       return false;
     }
+  }
+
+  /**
+   * Takes a library offline: its rows are kept as they are, and the watcher is
+   * closed so a fresh one is attached when the folder comes back (e.g. remount).
+   */
+  private setUnavailable(state: LibraryState, reason: string) {
+    if (state.realRoot || !state.error) {
+      this.log.warn({ library: state.cfg.id, path: state.cfg.path, err: reason }, 'library unavailable');
+    }
+    state.realRoot = null;
+    state.rootDev = null;
+    state.error = `Library folder is unavailable: ${reason}`;
+    const w = state.watcher;
+    state.watcher = null;
+    void w?.close().catch(() => {});
+  }
+
+  /** False (and the library is taken offline) if its folder vanished or its filesystem was unmounted. */
+  private async rootAlive(state: LibraryState): Promise<boolean> {
+    if (!state.realRoot) return false;
+    const st = await fs.promises.stat(state.realRoot).catch(() => null);
+    if (st?.isDirectory() && st.dev === state.rootDev) return true;
+    this.setUnavailable(state, st ? 'filesystem changed (unmounted?)' : 'ENOENT');
+    this.notify(state.cfg.id);
+    return false;
   }
 
   private async retryUnavailable(watch: boolean) {
@@ -177,15 +204,14 @@ export class Indexer extends EventEmitter {
     const state = this.libs.get(id);
     if (!state || this.stopped) return;
     if (!state.realRoot && !(await this.openLibrary(state))) return;
-    // The root may have vanished since it was opened.
-    if (!(await fs.promises.stat(state.realRoot!).catch(() => null))) {
-      await this.openLibrary(state);
-      return;
-    }
+    // The root may have vanished (or been unmounted) since it was opened.
+    if (!(await this.rootAlive(state))) return;
     state.scanning = true;
     const started = Date.now();
     try {
       const { files, sidecars, failedDirs } = await walkLibrary(state.cfg, state.realRoot!);
+      // Unmounted mid-walk: the listing is incomplete, so reconcile nothing.
+      if (!(await this.rootAlive(state))) return;
       const rows = this.db.all<Pick<AssetRow, 'id' | 'rel_path' | 'size' | 'mtime_ms' | 'inode' | 'birth_ms'>>(
         "SELECT id, rel_path, size, mtime_ms, inode, birth_ms FROM assets WHERE library_id = ? AND status = 'ready'", id,
       );
@@ -486,7 +512,8 @@ export class Indexer extends EventEmitter {
     for (const [libId, rels] of batches) {
       if (scans.includes(libId)) continue;
       const state = this.libs.get(libId);
-      if (!state?.realRoot) continue;
+      // An unmount shows up as a burst of deletions; never act on those.
+      if (!state || !(await this.rootAlive(state))) continue;
       const removed: number[] = [];
       const present: FileEntry[] = [];
       const sidecarRels: string[] = [];
@@ -496,7 +523,7 @@ export class Indexer extends EventEmitter {
           sidecarRels.push(rel);
           continue;
         }
-        const entry = await statEntry(state.realRoot, rel);
+        const entry = await statEntry(state.realRoot!, rel);
         if (entry) {
           present.push(entry);
           continue;

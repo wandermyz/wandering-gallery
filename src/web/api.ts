@@ -3,6 +3,7 @@ export interface Library {
   name: string;
   writable: boolean;
   recursive: boolean;
+  showInAll: boolean;
   count: number;
   images: number;
   videos: number;
