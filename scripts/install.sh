@@ -3,7 +3,8 @@
 # Safe to re-run for upgrades. Does not need root.
 set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_DIR="$REPO_DIR/web"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wandering-gallery"
 NODE="$(command -v node || true)"
@@ -30,7 +31,7 @@ fi
 # PATH for the service: node's directory plus the usual places ffmpeg lives.
 SVC_PATH="$(dirname "$NODE"):$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 sed -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@NODE@|$NODE|g" -e "s|@PATH@|$SVC_PATH|g" \
-  deploy/wandering-gallery.service > "$UNIT_DIR/wandering-gallery.service"
+  "$REPO_DIR/deploy/wandering-gallery.service" > "$UNIT_DIR/wandering-gallery.service"
 
 systemctl --user daemon-reload
 systemctl --user enable wandering-gallery.service >/dev/null
