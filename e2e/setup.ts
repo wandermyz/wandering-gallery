@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FFMPEG, FFPROBE, ageAll, fixture, hasFfmpeg, makeJpeg, makePng, makeVideo } from '../test/helpers.js';
@@ -23,6 +24,15 @@ async function setup() {
   }
   await makeJpeg(path.join(lib, 'portraits', 'p1.jpg'), '#884422');
   await makeJpeg(path.join(lib, 'portraits', 'p2.jpg'), '#448822');
+  // Caption sidecars as written by wandering-lora.
+  fs.writeFileSync(path.join(lib, 'portraits', 'p1.txt'), 'portrait, man, smiling');
+  fs.writeFileSync(path.join(lib, 'portraits', 'p1.caption.json'), JSON.stringify({
+    schema: 'wandering-lora/caption@1', image: 'p1.jpg', status: 'generated',
+    caption_sha256: crypto.createHash('sha256').update('portrait, man, smiling').digest('hex'),
+    caption: 'portrait, man, smiling', description: 'A smiling man.', classification: { view: 'front', face_visible: true },
+    raw: { output: 'portrait, man, smiling' }, generation: { model: 'Qwen/Qwen3.5-4B', created_at: '2026-10-10T05:30:00Z' },
+    candidate: { caption: 'portrait, man, smiling, beard' }, previous: null, updated_at: '2026-10-10T05:30:00Z',
+  }, null, 2));
   if (hasFfmpeg) makeVideo(path.join(lib, 'video', 'clip_00001_.mp4'), { seconds: 3, metadata: { prompt: fixture('wan-video.prompt.json').replace(/\s+/g, ' ') } });
   await makePng(path.join(ro, 'locked.png'), { color: '#777777' });
 

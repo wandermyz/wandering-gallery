@@ -241,6 +241,32 @@ test('ComfyUI metadata panel shows parameters, prompts and raw JSON', async ({ p
   await page.getByRole('button', { name: 'Close details' }).click();
 });
 
+test('caption sidecars can be edited in the details panel', async ({ page }, info) => {
+  await openGallery(page, '?lib=lib&folder=portraits');
+  await expect(page.locator('.cell[aria-label="p1.jpg"] .badge-cap')).toBeVisible();
+  await expect(page.locator('.cell[aria-label="p2.jpg"] .badge-cap')).toHaveCount(0);
+  await openAsset(page, 'p1.jpg');
+  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
+  const panel = page.locator('.info');
+  const section = panel.locator('.section', { hasText: 'Caption' }).first();
+  await expect(section.locator('.cap-pill')).toBeVisible();
+  const box = section.locator('textarea.cap-text');
+  await expect(box).toHaveValue(/^portrait, man/);
+  // Typing must not trigger viewer shortcuts (f = favorite, digits = rating).
+  const caption = `portrait, man, f5, ${info.project.name}`;
+  await box.fill('');
+  await box.pressSequentially(caption);
+  await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
+  await section.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(section.locator('.cap-pill')).toHaveText('Edited');
+  expect(fs.readFileSync(path.join(LIB, 'portraits', 'p1.txt'), 'utf8')).toBe(caption);
+  await section.getByRole('button', { name: 'Approve' }).click();
+  await expect(section.locator('.cap-pill')).toHaveText('Approved');
+  const json = JSON.parse(fs.readFileSync(path.join(LIB, 'portraits', 'p1.caption.json'), 'utf8'));
+  expect(json).toMatchObject({ status: 'approved', caption, review: { by: 'gallery' }, description: 'A smiling man.' });
+  await page.getByRole('button', { name: 'Close details' }).click();
+});
+
 test('newly generated files appear without reloading', async ({ page }, info) => {
   await openGallery(page);
   const name = `fresh_${info.project.name}.png`;

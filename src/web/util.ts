@@ -69,3 +69,10 @@ export async function copyText(text: string): Promise<boolean> {
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
 }
+
+export const CAPTION_LABELS: Record<string, string> = {
+  generated: 'Generated', edited: 'Edited', approved: 'Approved', needs_regen: 'Needs regen', unknown: 'Unknown',
+};
+
+/** Fired by the app when the server reports changed caption sidecars (detail: asset ids). */
+export const CAPTION_EVENT = 'wg:captions';

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { LibraryConfig } from './config.js';
-import { isIgnoredName, mediaType } from './media.js';
+import { isIgnoredName, mediaType, sidecarStem } from './media.js';
 import { isInside } from './paths.js';
 
 export interface FileEntry {
@@ -16,6 +16,8 @@ export interface FileEntry {
 
 export interface WalkResult {
   files: FileEntry[];
+  /** Possible caption sidecars (`*.txt`, `*.caption.json`); matched to media files by the indexer. */
+  sidecars: FileEntry[];
   /** Folders (library-relative) that could not be read; their DB rows must be left untouched. */
   failedDirs: string[];
 }
@@ -27,6 +29,7 @@ export interface WalkResult {
  */
 export async function walkLibrary(lib: LibraryConfig, realRoot: string): Promise<WalkResult> {
   const files: FileEntry[] = [];
+  const sidecars: FileEntry[] = [];
   const failedDirs: string[] = [];
   const stack: string[] = [''];
   while (stack.length) {
@@ -48,19 +51,20 @@ export async function walkLibrary(lib: LibraryConfig, realRoot: string): Promise
           continue;
         }
         if (!ent.isFile() && !ent.isSymbolicLink()) continue;
-        if (!mediaType(ent.name)) continue;
+        const isMedia = !!mediaType(ent.name);
+        if (!isMedia && !sidecarStem(ent.name)) continue;
         const entry = await statEntry(realRoot, rel);
-        if (entry) files.push(entry);
+        if (entry) (isMedia ? files : sidecars).push(entry);
       }
     } catch {
       failedDirs.push(relDir);
     }
     await new Promise((r) => setImmediate(r));
   }
-  return { files, failedDirs };
+  return { files, sidecars, failedDirs };
 }
 
-/** Stats a single library-relative path; returns null if it is not an eligible media file. */
+/** Stats a single library-relative path; returns null if it is not a regular file inside the library. */
 export async function statEntry(realRoot: string, rel: string): Promise<FileEntry | null> {
   const abs = path.join(realRoot, ...rel.split('/'));
   try {

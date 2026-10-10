@@ -4,9 +4,10 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import chokidar, { type FSWatcher } from 'chokidar';
 import type { AppConfig, LibraryConfig } from './config.js';
-import type { AssetRow, Db } from './db.js';
+import { effectiveStatus, hasCandidate, readSidecars, sigOf } from './captions.js';
+import type { AssetRow, CaptionRow, Db } from './db.js';
 import { fingerprint, looksComplete } from './fileinfo.js';
-import { isIgnoredName, mediaType } from './media.js';
+import { isIgnoredName, mediaType, sidecarNames, sidecarStem } from './media.js';
 import { extract } from './metadata/extract.js';
 import { checkRelPath, isInside, toPosix } from './paths.js';
 import { folderOf, statEntry, walkLibrary, type FileEntry } from './scanner.js';
@@ -30,7 +31,11 @@ export interface LibraryState {
 export interface ChangeEvent {
   libraries: string[];
   removed: number[];
+  /** Assets whose caption sidecars changed. */
+  captions: number[];
 }
+
+type CaptionOwner = Pick<AssetRow, 'id' | 'library_id' | 'rel_path' | 'folder' | 'name'>;
 
 /** Missing rows are kept this long so a file that comes back (moved, remounted) keeps its rating. */
 const MISSING_RETENTION_MS = 30 * 24 * 3600_000;
@@ -64,6 +69,7 @@ export class Indexer extends EventEmitter {
   private workerDone: Promise<void> | null = null;
   private changeLibs = new Set<string>();
   private changeRemoved: number[] = [];
+  private changeCaptions = new Set<number>();
   private changeTimer: NodeJS.Timeout | null = null;
   /** Scans and watcher batches run one at a time, so DB reconciliation never interleaves. */
   private queue: Promise<void> = Promise.resolve();
@@ -179,7 +185,7 @@ export class Indexer extends EventEmitter {
     state.scanning = true;
     const started = Date.now();
     try {
-      const { files, failedDirs } = await walkLibrary(state.cfg, state.realRoot!);
+      const { files, sidecars, failedDirs } = await walkLibrary(state.cfg, state.realRoot!);
       const rows = this.db.all<Pick<AssetRow, 'id' | 'rel_path' | 'size' | 'mtime_ms' | 'inode' | 'birth_ms'>>(
         "SELECT id, rel_path, size, mtime_ms, inode, birth_ms FROM assets WHERE library_id = ? AND status = 'ready'", id,
       );
@@ -199,10 +205,11 @@ export class Indexer extends EventEmitter {
         if (row && row.size === f.size && row.mtime_ms === f.mtimeMs && sameFile(row, f)) continue;
         if ((await this.syncFile(state, f)) !== 'unchanged') changed = true;
       }
+      const captions = await this.reconcileCaptions(id, sidecars, unreadable);
       if (failedDirs.length) {
         this.log.warn({ library: id, dirs: failedDirs.slice(0, 10) }, 'some folders could not be read');
       }
-      if (changed) this.notify(id, removed);
+      if (changed || captions.length) this.notify(id, removed, captions);
       this.log.info({ library: id, files: files.length, ms: Date.now() - started }, 'scan complete');
     } finally {
       state.scanning = false;
@@ -287,6 +294,77 @@ export class Indexer extends EventEmitter {
     });
   }
 
+  // --- Caption sidecars -------------------------------------------------------
+
+  /**
+   * Re-reads the caption sidecars of every live asset whose cached size/mtime/inode
+   * signatures differ from what the scan found on disk. Returns the changed asset ids.
+   */
+  private async reconcileCaptions(libId: string, sidecars: FileEntry[], unreadable: (rel: string) => boolean): Promise<number[]> {
+    const onDisk = new Map(sidecars.map((f) => [f.rel, sigOf(f)]));
+    const rows = this.db.all<CaptionOwner & Pick<CaptionRow, 'txt_sig' | 'json_sig'>>(
+      `SELECT assets.id, library_id, rel_path, folder, name, txt_sig, json_sig FROM assets
+         LEFT JOIN captions ON captions.asset_id = assets.id WHERE library_id = ? AND status = 'ready'`, libId);
+    const changed: number[] = [];
+    for (const row of rows) {
+      if (this.stopped) break;
+      if (unreadable(row.rel_path)) continue;
+      const names = sidecarNames(row.name);
+      const prefix = row.folder ? row.folder + '/' : '';
+      if ((onDisk.get(prefix + names.txt) ?? null) === row.txt_sig && (onDisk.get(prefix + names.json) ?? null) === row.json_sig) continue;
+      if (await this.syncCaption(row)) changed.push(row.id);
+    }
+    return changed;
+  }
+
+  /**
+   * Refreshes the cached caption of one asset from its sidecars. Cheap when nothing
+   * changed (two stats), so it is safe to call after the gallery's own writes.
+   * Returns true if the cache changed.
+   */
+  async syncCaption(row: CaptionOwner): Promise<boolean> {
+    const state = this.libs.get(row.library_id);
+    if (!state?.realRoot) return false;
+    const names = sidecarNames(row.name);
+    const prefix = row.folder ? row.folder + '/' : '';
+    const [t, j] = await Promise.all([statEntry(state.realRoot, prefix + names.txt), statEntry(state.realRoot, prefix + names.json)]);
+    const txtSig = sigOf(t);
+    const jsonSig = sigOf(j);
+    const cur = this.db.caption(row.id);
+    if (cur ? cur.txt_sig === txtSig && cur.json_sig === jsonSig : !txtSig && !jsonSig) return false;
+    if (!t && !j) {
+      this.db.run('DELETE FROM captions WHERE asset_id = ?', row.id);
+      return true;
+    }
+    let s;
+    try {
+      s = await readSidecars(path.dirname((t ?? j)!.abs), row.name);
+    } catch (err) {
+      this.log.warn({ file: row.rel_path, err: (err as Error).message }, 'cannot read caption sidecar');
+      return false;
+    }
+    // Only files that statEntry accepted (e.g. no symlinks out of the library).
+    if (!t) s.txt = s.txtSha256 = null;
+    if (!j) s.json = null;
+    if (s.txt === null && !s.json && !s.jsonError) {
+      // e.g. symlinked sidecars, which are never read.
+      this.db.run('DELETE FROM captions WHERE asset_id = ?', row.id);
+      return !!cur;
+    }
+    const json = s.json;
+    const classification = json?.classification && typeof json.classification === 'object' ? JSON.stringify(json.classification) : null;
+    this.db.run(
+      `INSERT INTO captions (asset_id, caption, caption_status, txt_sha256, has_candidate, json_updated_at, classification_json, txt_sig, json_sig)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(asset_id) DO UPDATE SET caption = excluded.caption, caption_status = excluded.caption_status,
+         txt_sha256 = excluded.txt_sha256, has_candidate = excluded.has_candidate, json_updated_at = excluded.json_updated_at,
+         classification_json = excluded.classification_json, txt_sig = excluded.txt_sig, json_sig = excluded.json_sig, rev = rev + 1`,
+      row.id, s.txt, effectiveStatus(s) ?? 'unknown', s.txtSha256, hasCandidate(json) ? 1 : 0,
+      typeof json?.updated_at === 'string' ? json.updated_at : null, classification, txtSig, jsonSig,
+    );
+    return true;
+  }
+
   /** A missing asset with the same content, or a live one whose file is gone (event ordering). */
   private findMovedFrom(fp: string, size: number): AssetRow | undefined {
     const missing = this.db.missingMatch(fp, size);
@@ -362,7 +440,7 @@ export class Indexer extends EventEmitter {
         if (p === root) return false;
         const rel = path.relative(root, p);
         if (rel.split(path.sep).some(isIgnoredName)) return true;
-        return !!stats?.isFile() && !mediaType(p);
+        return !!stats?.isFile() && !mediaType(p) && !sidecarStem(path.basename(p));
       },
     });
     const onFile = (p: string) => this.queuePath(state.cfg.id, toPosix(path.relative(root, p)));
@@ -411,8 +489,13 @@ export class Indexer extends EventEmitter {
       if (!state?.realRoot) continue;
       const removed: number[] = [];
       const present: FileEntry[] = [];
+      const sidecarRels: string[] = [];
       // Removals first, so a rename in the same batch is matched as a move.
       for (const rel of rels) {
+        if (!mediaType(rel)) {
+          sidecarRels.push(rel);
+          continue;
+        }
         const entry = await statEntry(state.realRoot, rel);
         if (entry) {
           present.push(entry);
@@ -429,21 +512,37 @@ export class Indexer extends EventEmitter {
         const r = await this.syncFile(state, entry);
         if (r !== 'unchanged' && r !== 'deferred' && r !== 'error') changed = true;
       }
-      if (changed) this.notify(libId, removed);
+      // Captions of touched media files (new, moved) and of the owners of touched sidecars.
+      const owners = new Map<number, CaptionOwner>();
+      for (const entry of present) {
+        const row = this.db.liveAt(libId, entry.rel);
+        if (row) owners.set(row.id, row);
+      }
+      for (const rel of sidecarRels) {
+        const stem = sidecarStem(path.posix.basename(rel));
+        if (stem) for (const row of this.db.liveWithStem(libId, folderOf(rel), stem)) owners.set(row.id, row);
+      }
+      const captions: number[] = [];
+      for (const row of owners.values()) if (await this.syncCaption(row)) captions.push(row.id);
+      if (changed || captions.length) this.notify(libId, removed, captions);
     }
   }
 
   // --- Change notifications ------------------------------------------------
 
-  notify(libId: string, removed: number[] = []) {
+  notify(libId: string, removed: number[] = [], captions: number[] = []) {
     this.changeLibs.add(libId);
     this.changeRemoved.push(...removed);
+    for (const id of captions) this.changeCaptions.add(id);
     if (this.changeTimer) return;
     this.changeTimer = setTimeout(() => {
       this.changeTimer = null;
-      const ev: ChangeEvent = { libraries: [...this.changeLibs], removed: this.changeRemoved.slice(0, 1000) };
+      const ev: ChangeEvent = {
+        libraries: [...this.changeLibs], removed: this.changeRemoved.slice(0, 1000), captions: [...this.changeCaptions].slice(0, 1000),
+      };
       this.changeLibs.clear();
       this.changeRemoved = [];
+      this.changeCaptions.clear();
       this.emit('change', ev);
     }, 500);
   }

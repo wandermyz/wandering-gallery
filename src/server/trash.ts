@@ -4,6 +4,7 @@ import type { AppConfig } from './config.js';
 import type { AssetRow, Db } from './db.js';
 import { looksComplete } from './fileinfo.js';
 import type { Indexer } from './indexer.js';
+import { sidecarNames } from './media.js';
 import { HttpError, isInside, resolveInside, resolveTargetInside } from './paths.js';
 
 /**
@@ -55,6 +56,35 @@ function fsMessage(err: unknown): string {
   }
 }
 
+/**
+ * Moves the caption sidecars of `fromName` in `fromDir` to those of `toName` in
+ * `toDir`. All or nothing: if one move fails, the ones already done are undone.
+ * Symlinked sidecars are left alone.
+ */
+async function moveSidecars(fromDir: string, fromName: string, toDir: string, toName: string) {
+  const from = sidecarNames(fromName);
+  const to = sidecarNames(toName);
+  const done: [string, string][] = [];
+  try {
+    for (const k of ['txt', 'json'] as const) {
+      const src = path.join(fromDir, from[k]);
+      const st = await fs.promises.lstat(src).catch(() => null);
+      if (!st?.isFile()) continue;
+      const dest = path.join(toDir, to[k]);
+      await moveFile(src, dest);
+      done.push([src, dest]);
+    }
+  } catch (err) {
+    for (const [src, dest] of done.reverse()) await moveFile(dest, src).catch(() => {});
+    throw err;
+  }
+}
+
+async function sidecarsExist(dir: string, name: string): Promise<boolean> {
+  const n = sidecarNames(name);
+  return (await exists(path.join(dir, n.txt))) || (await exists(path.join(dir, n.json)));
+}
+
 export class Trash {
   readonly root: string;
 
@@ -104,9 +134,15 @@ export class Trash {
       "UPDATE assets SET status = 'trashed', trashed_at_ms = ?, trash_path = ?, missing_since_ms = NULL WHERE id = ?",
       Date.now(), path.relative(this.root, dest), row.id,
     );
+    // Caption sidecars go first and travel with the file, so they never attach to a later file of the same name.
+    const srcDir = path.dirname(path.join(lib.realRoot ?? lib.cfg.path, ...row.rel_path.split('/')));
+    let sidecarsMoved = false;
     try {
+      await moveSidecars(srcDir, row.name, path.dirname(dest), row.name);
+      sidecarsMoved = true;
       await moveFile(abs, dest);
     } catch (err) {
+      if (sidecarsMoved) await moveSidecars(path.dirname(dest), row.name, srcDir, row.name).catch(() => {});
       this.db.run("UPDATE assets SET status = 'ready', trashed_at_ms = NULL, trash_path = NULL WHERE id = ?", row.id);
       await fs.promises.rmdir(path.dirname(dest)).catch(() => {});
       throw new HttpError(`Could not move file to trash: ${fsMessage(err)}`, 500);
@@ -137,7 +173,9 @@ export class Trash {
 
     let rel = row.rel_path;
     let target = await resolveTargetInside(lib.cfg.path, rel);
-    for (let n = 1; (await exists(target)) || this.db.liveAt(row.library_id, rel); n++) {
+    const taken = async () => (await exists(target)) || !!this.db.liveAt(row.library_id, rel) ||
+      (await sidecarsExist(path.dirname(target), path.posix.basename(rel)));
+    for (let n = 1; await taken(); n++) {
       if (n > 999) throw new HttpError('no free filename to restore to', 409);
       const ext = path.posix.extname(row.rel_path);
       rel = `${row.rel_path.slice(0, row.rel_path.length - ext.length)} (restored${n > 1 ? ` ${n}` : ''})${ext}`;
@@ -149,10 +187,16 @@ export class Trash {
       const code = (err as NodeJS.ErrnoException).code;
       throw new HttpError(`Could not restore file: ${fsMessage(err)}`, code === 'EEXIST' ? 409 : 500);
     }
+    try {
+      await moveSidecars(path.dirname(src), row.name, path.dirname(target), path.posix.basename(rel));
+    } catch {
+      /* the caption stays in the trash folder; the restored file is what matters */
+    }
     await fs.promises.rmdir(path.dirname(src)).catch(() => {});
     const st = await fs.promises.stat(target);
     this.markRestored(row.id, row.library_id, rel, st);
-    this.indexer.notify(row.library_id);
+    await this.indexer.syncCaption(this.db.asset(row.id)!);
+    this.indexer.notify(row.library_id, [], [row.id]);
     return this.db.asset(row.id)!;
   }
 
@@ -190,6 +234,10 @@ export class Trash {
         const abs = await resolveInside(lib.cfg.path, row.rel_path);
         const st = await fs.promises.stat(abs);
         if (this.db.liveAt(row.library_id, row.rel_path)) continue;
+        // Sidecars may have been moved before the crash.
+        if (row.trash_path && !(await sidecarsExist(path.dirname(abs), row.name))) {
+          await moveSidecars(path.dirname(path.resolve(this.root, row.trash_path)), row.name, path.dirname(abs), row.name).catch(() => {});
+        }
         this.markRestored(row.id, row.library_id, row.rel_path, st);
         fixed++;
       } catch {
@@ -204,7 +252,9 @@ export class Trash {
     const row = this.db.asset(id);
     if (!row || row.status !== 'trashed') throw new HttpError('asset is not in the trash', 404);
     const file = this.trashFile(row);
+    const names = sidecarNames(row.name);
     try {
+      for (const n of [names.txt, names.json]) await fs.promises.rm(path.join(path.dirname(file), n), { force: true });
       await fs.promises.rm(file, { force: true });
     } catch (err) {
       throw new HttpError(`Could not delete file: ${fsMessage(err)}`, 500);

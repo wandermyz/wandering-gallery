@@ -4,7 +4,8 @@ import path from 'node:path';
 import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { AppConfig } from './config.js';
-import type { AssetRow, Db } from './db.js';
+import { Captions, CAPTION_STATUSES, parseCaptionRequest } from './captions.js';
+import { CAPTION_JOIN, type AssetRow, type Db } from './db.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { videoPlayability, mediaType } from './media.js';
 import type { GenerationSummary } from './metadata/comfyui.js';
@@ -53,6 +54,9 @@ function assetJson(r: AssetRow) {
     rating: r.rating,
     status: r.status,
     trashedAtMs: r.trashed_at_ms,
+    caption: (r.caption_status ?? null) as string | null,
+    captionCandidate: !!r.has_candidate,
+    captionRev: r.caption_rev ?? 0,
     // Thumbnail URLs embed the fingerprint so browsers can cache them forever.
     v: r.fingerprint.slice(0, 12),
     needsPreview: r.kind === 'image' && !r.animated &&
@@ -72,6 +76,7 @@ function intParam(v: unknown, name: string, min: number, max: number, fallback?:
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { cfg, db, indexer, trash } = deps;
+  const captions = new Captions(db, indexer);
   const app = Fastify({
     ...(deps.logger ? { loggerInstance: deps.logger } : { logger: false }),
     logController: new LogController({ disableRequestLogging: true }),
@@ -253,6 +258,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       where.push('kind = ?');
       params.push(q.kind);
     }
+    if (q.caption) {
+      if (q.caption === 'any') where.push('caption_status IS NOT NULL');
+      else if (q.caption === 'none') where.push('caption_status IS NULL');
+      else if (q.caption === 'candidate') where.push('has_candidate = 1');
+      else if ((CAPTION_STATUSES as readonly string[]).includes(q.caption)) {
+        where.push('caption_status = ?');
+        params.push(q.caption);
+      } else throw new HttpError('invalid caption filter', 400);
+    }
     const asc = q.order === 'asc';
     const limit = intParam(q.limit, 'limit', 1, PAGE_MAX, 120);
     if (q.cursor) {
@@ -263,7 +277,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     const dir = asc ? 'ASC' : 'DESC';
     const rows = db.all<AssetRow>(
-      `SELECT * FROM assets WHERE ${where.join(' AND ')} ORDER BY mtime_ms ${dir}, id ${dir} LIMIT ?`,
+      `${CAPTION_JOIN} WHERE ${where.join(' AND ')} ORDER BY mtime_ms ${dir}, id ${dir} LIMIT ?`,
       ...params, limit + 1,
     );
     const more = rows.length > limit;
@@ -272,7 +286,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     let total: number | undefined;
     if (!q.cursor) {
       total = db.get<{ n: number }>(
-        `SELECT count(*) AS n FROM assets WHERE ${where.join(' AND ')}`, ...params,
+        `SELECT count(*) AS n FROM assets LEFT JOIN captions ON captions.asset_id = assets.id WHERE ${where.join(' AND ')}`, ...params,
       )!.n;
     }
     return {
@@ -310,6 +324,30 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       promptBytes: m?.prompt_json?.length ?? 0,
       workflowBytes: m?.workflow_json?.length ?? 0,
     };
+  });
+
+  // Caption sidecars are read from disk on every request: they are the source of truth.
+  const captionJson = (c: Awaited<ReturnType<Captions['get']>>) => ({
+    txt: c.txt,
+    json: c.json,
+    jsonError: c.jsonError,
+    status: c.status,
+    // What a later POST must send back for its conflict check.
+    updated_at: typeof c.json?.updated_at === 'string' ? c.json.updated_at : null,
+    txt_sha256: c.txtSha256,
+    json_sha256: c.jsonSha256,
+    writable: c.writable,
+  });
+
+  app.get('/api/assets/:id/caption', async (req, reply) => {
+    const row = getAsset((req.params as { id: string }).id);
+    reply.header('Cache-Control', 'no-store');
+    return captionJson(await captions.get(row));
+  });
+
+  app.post('/api/assets/:id/caption', async (req) => {
+    const row = getAsset((req.params as { id: string }).id);
+    return captionJson(await captions.act(row, parseCaptionRequest(req.body)));
   });
 
   app.get('/api/assets/:id/raw/:which', async (req, reply) => {

@@ -19,7 +19,7 @@ libraries:
     name: ComfyUI Outputs
     path: /path/to/ComfyUI/output
     recursive: true        # include subfolders
-    writable: true         # allow moving files to the trash
+    writable: true         # allow moving files to the trash and editing caption sidecars
 
   - id: inputs
     name: ComfyUI Inputs

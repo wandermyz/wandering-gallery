@@ -33,6 +33,10 @@ export interface AssetRow {
   missing_since_ms: number | null;
   trashed_at_ms: number | null;
   trash_path: string | null;
+  /** From the captions table, where the query joins it (see Db.asset). */
+  caption_status?: string | null;
+  has_candidate?: number | null;
+  caption_rev?: number | null;
 }
 
 export interface MetadataRow {
@@ -45,7 +49,24 @@ export interface MetadataRow {
   search_text: string | null;
 }
 
-const SCHEMA_VERSION = 1;
+export interface CaptionRow {
+  asset_id: number;
+  caption: string | null;
+  caption_status: string;
+  txt_sha256: string | null;
+  has_candidate: number;
+  json_updated_at: string | null;
+  classification_json: string | null;
+  txt_sig: string | null;
+  json_sig: string | null;
+  rev: number;
+}
+
+/** Caption columns joined onto asset rows for the browser. */
+export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.has_candidate, captions.rev AS caption_rev
+  FROM assets LEFT JOIN captions ON captions.asset_id = assets.id`;
+
+const SCHEMA_VERSION = 2;
 
 const MIGRATIONS: string[] = [
   `
@@ -99,6 +120,23 @@ const MIGRATIONS: string[] = [
   );
 
   CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `,
+  // Cache of caption sidecars (<stem>.txt + <stem>.caption.json). The files are the
+  // source of truth; rows are rebuilt whenever a file's size/mtime/inode signature changes.
+  `
+  CREATE TABLE captions (
+    asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+    caption TEXT,
+    caption_status TEXT NOT NULL,
+    txt_sha256 TEXT,
+    has_candidate INTEGER NOT NULL DEFAULT 0,
+    json_updated_at TEXT,
+    classification_json TEXT,
+    txt_sig TEXT,
+    json_sig TEXT,
+    rev INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX captions_status ON captions(caption_status);
   `,
 ];
 
@@ -162,7 +200,20 @@ export class Db {
   // --- Asset helpers ------------------------------------------------------
 
   asset(id: number): AssetRow | undefined {
-    return this.get<AssetRow>('SELECT * FROM assets WHERE id = ?', id);
+    return this.get<AssetRow>(`${CAPTION_JOIN} WHERE assets.id = ?`, id);
+  }
+
+  /** Live assets in `folder` whose name is `<stem>.<ext>` (the owners of that stem's caption sidecars). */
+  liveWithStem(libraryId: string, folder: string, stem: string): AssetRow[] {
+    // '/' sorts right after '.', so [stem + '.', stem + '/') covers names starting with "stem.".
+    return this.all<AssetRow>(
+      "SELECT * FROM assets WHERE status = 'ready' AND library_id = ? AND folder = ? AND name >= ? AND name < ?",
+      libraryId, folder, stem + '.', stem + '/',
+    ).filter((r) => r.name.slice(0, r.name.lastIndexOf('.')) === stem);
+  }
+
+  caption(id: number): CaptionRow | undefined {
+    return this.get<CaptionRow>('SELECT * FROM captions WHERE asset_id = ?', id);
   }
 
   liveAt(libraryId: string, relPath: string): AssetRow | undefined {

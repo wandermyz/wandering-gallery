@@ -1,10 +1,10 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, ApiError, fileUrl, thumbUrl, type Asset, type Folder, type Library, type Query } from './api';
+import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query } from './api';
 import { Grid, type Density } from './Grid';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './ui';
-import { cx, formatBytes, formatDate } from './util';
+import { CAPTION_EVENT, cx, formatBytes, formatDate } from './util';
 import './styles.css';
 
 // ---- URL state ------------------------------------------------------------------
@@ -17,10 +17,16 @@ interface Route {
   favorite: boolean;
   minRating: number;
   kind: '' | 'image' | 'video';
+  caption: '' | CaptionFilter;
   order: 'desc' | 'asc';
   flat: boolean;
   asset: number | null;
 }
+
+const CAPTION_FILTERS: ['' | CaptionFilter, string][] = [
+  ['', 'All'], ['any', 'Captioned'], ['none', 'Uncaptioned'], ['generated', 'Generated'], ['edited', 'Edited'],
+  ['approved', 'Approved'], ['needs_regen', 'Needs regen'], ['candidate', 'Has candidate'],
+];
 
 function readRoute(): Route {
   const p = new URLSearchParams(location.search);
@@ -31,6 +37,7 @@ function readRoute(): Route {
     favorite: p.get('fav') === '1',
     minRating: Math.min(5, Math.max(0, Number(p.get('rating')) || 0)),
     kind: p.get('kind') === 'image' || p.get('kind') === 'video' ? (p.get('kind') as 'image' | 'video') : '',
+    caption: CAPTION_FILTERS.some(([k]) => k && k === p.get('cap')) ? (p.get('cap') as CaptionFilter) : '',
     order: p.get('order') === 'asc' ? 'asc' : 'desc',
     flat: p.get('flat') === '1',
     asset: Number(p.get('a')) || null,
@@ -44,6 +51,7 @@ function routeUrl(r: Route): string {
   if (r.favorite) p.set('fav', '1');
   if (r.minRating) p.set('rating', String(r.minRating));
   if (r.kind) p.set('kind', r.kind);
+  if (r.caption) p.set('cap', r.caption);
   if (r.order === 'asc') p.set('order', 'asc');
   if (r.flat) p.set('flat', '1');
   if (r.asset) p.set('a', String(r.asset));
@@ -81,6 +89,7 @@ function queryOf(r: Route): Query {
     favorite: r.favorite,
     minRating: r.minRating,
     kind: r.kind || undefined,
+    caption: r.caption || undefined,
     order: r.order,
   };
 }
@@ -200,7 +209,7 @@ function App() {
   const [focusId, setFocusId] = useState<number | null>(null);
   const [newCount, setNewCount] = useState(0);
 
-  const q = useMemo(() => queryOf(route), [route.library, route.folder, route.favorite, route.minRating, route.kind, route.order, route.flat]);
+  const q = useMemo(() => queryOf(route), [route.library, route.folder, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
   const list = useAssets(q, route.view === 'gallery');
 
   const toast = useCallback((text: string, opts: Partial<ToastMsg> = {}) => {
@@ -248,7 +257,8 @@ function App() {
     const connect = () => {
       es = new EventSource('/api/events');
       es.addEventListener('change', (ev) => {
-        const data = JSON.parse((ev as MessageEvent).data) as { libraries: string[]; removed: number[] };
+        const data = JSON.parse((ev as MessageEvent).data) as { libraries: string[]; removed: number[]; captions?: number[] };
+        if (data.captions?.length) window.dispatchEvent(new CustomEvent(CAPTION_EVENT, { detail: data.captions }));
         const cur = readRoute();
         if (!cur.library || data.libraries.includes(cur.library)) {
           if (window.scrollY > 400 && !cur.asset) setNewCount((n) => n + 1);
@@ -438,7 +448,7 @@ function App() {
 
   // ---- Render -------------------------------------------------------------------------
 
-  const filtersActive = route.favorite || route.minRating > 0 || !!route.kind || route.order === 'asc' || route.flat;
+  const filtersActive = route.favorite || route.minRating > 0 || !!route.kind || !!route.caption || route.order === 'asc' || route.flat;
   const title = route.view === 'trash'
     ? 'Trash'
     : route.favorite && !route.library ? 'Favorites' : currentLib?.name ?? 'All media';
@@ -529,7 +539,7 @@ function App() {
                 {Array.from({ length: 24 }, (_, i) => <div key={i} class="skeleton" />)}
               </div>
             ) : list.items.length === 0 && !list.error ? (
-              <EmptyState route={route} scanning={!!status?.scanning || !!status?.pending} onClear={() => nav({ favorite: false, minRating: 0, kind: '' })} />
+              <EmptyState route={route} scanning={!!status?.scanning || !!status?.pending} onClear={() => nav({ favorite: false, minRating: 0, kind: '', caption: '' })} />
             ) : (
               <Grid
                 items={list.items}
@@ -623,6 +633,16 @@ function App() {
           <Stars value={route.minRating} onChange={(v) => nav({ minRating: v }, 'replace')} size={30} />
         </div>
         <div class="filter-group">
+          <div class="filter-label">Caption</div>
+          <div class="seg seg-wrap">
+            {CAPTION_FILTERS.map(([k, label]) => (
+              <button type="button" key={k || 'all'} class={cx(route.caption === k && 'on')} onClick={() => nav({ caption: k }, 'replace')}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div class="filter-group">
           <div class="filter-label">Sort by date</div>
           <div class="seg">
             <button type="button" class={cx(route.order === 'desc' && 'on')} onClick={() => nav({ order: 'desc' }, 'replace')}>Newest first</button>
@@ -649,7 +669,7 @@ function App() {
           </div>
         </div>
         {filtersActive && (
-          <button type="button" class="btn btn-block" onClick={() => nav({ favorite: false, minRating: 0, kind: '', order: 'desc', flat: false }, 'replace')}>
+          <button type="button" class="btn btn-block" onClick={() => nav({ favorite: false, minRating: 0, kind: '', caption: '', order: 'desc', flat: false }, 'replace')}>
             Reset filters
           </button>
         )}
@@ -712,7 +732,7 @@ function ViewerHost(props: Parameters<typeof Viewer>[0] & { libName: (id: string
 }
 
 function EmptyState({ route, scanning, onClear }: { route: Route; scanning: boolean; onClear: () => void }) {
-  const filtered = route.favorite || route.minRating > 0 || !!route.kind;
+  const filtered = route.favorite || route.minRating > 0 || !!route.kind || !!route.caption;
   return (
     <div class="empty">
       <Icon name={route.favorite ? 'heart' : 'grid'} size={40} />

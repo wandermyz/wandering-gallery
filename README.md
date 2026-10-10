@@ -168,6 +168,23 @@ favorites only, minimum rating, sort order, whether subfolders are included,
 and thumbnail size. The view state lives in the URL, so the browser's back
 button and bookmarks work.
 
+### Training captions
+
+Images can carry caption sidecars, as written by
+[wandering-lora](https://github.com/wandermyz/wandering-lora): `<stem>.txt` holds
+the training caption and `<stem>.caption.json` its status (`generated`,
+`edited`, `approved`, `needs_regen`), description, classification, model output,
+and an optional candidate caption. When an image has sidecars, the details panel
+shows a *Caption* section where you can edit, approve, mark for regeneration,
+or accept or discard a candidate. In a writable library, edits go straight to
+the sidecar files. Writes are atomic, keep unknown JSON keys, and are refused
+with a conflict if either file changed since you opened it. Grid thumbnails get
+a small status dot, and the filter sheet can filter by caption status. The
+files are the source of truth. SQLite only caches them for filtering, and
+re-reads them whenever their size, mtime, or inode changes. Sidecars are never
+listed as media, and they move to the trash and back together with their
+image.
+
 ## Supported formats
 
 | | Formats | Notes |
@@ -201,8 +218,10 @@ raw `prompt`/`workflow` JSON is still stored and shown.
   never by path. Every file access is resolved with `realpath` and checked to
   be inside its library. Symlinks that point outside a library are ignored,
   and symlinked directories aren't followed.
-- **Writable flag.** Deleting from a library with `writable: false` is
-  rejected by the server, not just hidden in the UI.
+- **Writable flag.** Deleting from a library with `writable: false`, or editing
+  a caption there, is rejected by the server, not just hidden in the UI.
+  Caption sidecars (`.txt`, `.caption.json`) are the only files the gallery
+  ever writes inside a library.
 - **Files being generated.** ComfyUI writes images directly to their final
   name, and video muxers write the index last. A file is only indexed or
   deletable once its size and mtime have been stable for `stableSeconds` *and*

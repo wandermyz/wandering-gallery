@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { thumbUrl, type Asset } from './api';
 import { Icon, MiniRating } from './ui';
-import { cx, dayLabel, formatDuration } from './util';
+import { CAPTION_LABELS, cx, dayLabel, formatDuration } from './util';
 
 type Row =
   | { type: 'h'; top: number; label: string; key: string }
@@ -193,6 +193,9 @@ function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: 
         </span>
       )}
       <MiniRating value={a.rating} />
+      {a.caption && (
+        <span class={cx('badge-cap', `cap-${a.caption}`, a.captionCandidate && 'cand')} title={`Caption: ${CAPTION_LABELS[a.caption] ?? a.caption}${a.captionCandidate ? ' (candidate available)' : ''}`} />
+      )}
     </button>
   );
 }

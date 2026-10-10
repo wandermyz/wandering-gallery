@@ -36,6 +36,11 @@ export interface Asset {
   rating: number;
   status: 'ready' | 'missing' | 'trashed';
   trashedAtMs: number | null;
+  /** Caption sidecar status ('unknown' for an unreadable json), null when there is no caption. */
+  caption: CaptionStatus | 'unknown' | null;
+  captionCandidate: boolean;
+  /** Changes whenever the cached caption changes. */
+  captionRev: number;
   v: string;
   needsPreview: boolean;
   libraryName?: string;
@@ -80,6 +85,35 @@ export interface MetadataResponse {
   workflowBytes: number;
 }
 
+export type CaptionStatus = 'generated' | 'edited' | 'approved' | 'needs_regen';
+export type CaptionFilter = 'any' | 'none' | CaptionStatus | 'candidate';
+
+/** Parsed `<stem>.caption.json` (see wandering-lora docs/sidecar-format.md); unknown keys pass through. */
+export interface CaptionJson {
+  status?: string;
+  caption?: string;
+  description?: string;
+  classification?: Record<string, unknown>;
+  raw?: { output?: string; dropped_tags?: string[] } & Record<string, unknown>;
+  generation?: { model?: string; revision?: string; created_at?: string; pipeline_version?: string } & Record<string, unknown>;
+  candidate?: { caption?: string; description?: string; classification?: Record<string, unknown>; generation?: { model?: string; created_at?: string } } | null;
+  updated_at?: string;
+  [k: string]: unknown;
+}
+
+export interface CaptionResponse {
+  txt: string | null;
+  json: CaptionJson | null;
+  jsonError: string | null;
+  status: CaptionStatus | null;
+  updated_at: string | null;
+  txt_sha256: string | null;
+  json_sha256: string | null;
+  writable: boolean;
+}
+
+export type CaptionAction = 'save' | 'approve' | 'needs_regen' | 'accept_candidate' | 'discard_candidate';
+
 export interface Page {
   items: Asset[];
   next: string | null;
@@ -93,6 +127,7 @@ export interface Query {
   favorite?: boolean;
   minRating?: number;
   kind?: 'image' | 'video';
+  caption?: CaptionFilter;
   order?: 'asc' | 'desc';
 }
 
@@ -157,7 +192,7 @@ export const api = {
   assets: (q: Query, cursor?: string | null, limit = 120) =>
     request<Page>('GET', `/api/assets${qs({
       library: q.library, folder: q.folder, recursive: q.recursive === false ? '0' : undefined,
-      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, order: q.order === 'asc' ? 'asc' : undefined,
+      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, caption: q.caption, order: q.order === 'asc' ? 'asc' : undefined,
       cursor, limit,
     })}`),
   asset: (id: number) => request<Asset>('GET', `/api/assets/${id}`),
@@ -167,6 +202,12 @@ export const api = {
     if (!r.ok) throw new ApiError('not available', r.status);
     return r.text();
   },
+  caption: (id: number) => request<CaptionResponse>('GET', `/api/assets/${id}/caption`),
+  /** `loaded` is the caption response the edit is based on (for the server's conflict check). */
+  captionAction: (id: number, action: CaptionAction, loaded: CaptionResponse, extra: { caption?: string; approve?: boolean } = {}) =>
+    request<CaptionResponse>('POST', `/api/assets/${id}/caption`, {
+      action, ...extra, updated_at: loaded.updated_at, txt_sha256: loaded.txt_sha256, json_sha256: loaded.json_sha256,
+    }),
   favorite: (id: number, favorite: boolean) => request<Asset>('POST', `/api/assets/${id}/favorite`, { favorite }),
   rate: (id: number, rating: number) => request<Asset>('POST', `/api/assets/${id}/rating`, { rating }),
   trash: (a: Asset) => request<Asset>('POST', `/api/assets/${a.id}/trash`, { size: a.size, mtimeMs: a.mtimeMs }),
