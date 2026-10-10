@@ -66,7 +66,7 @@ export interface CaptionRow {
 export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.has_candidate, captions.rev AS caption_rev
   FROM assets LEFT JOIN captions ON captions.asset_id = assets.id`;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATIONS: string[] = [
   `
@@ -137,6 +137,11 @@ const MIGRATIONS: string[] = [
     rev INTEGER NOT NULL DEFAULT 1
   );
   CREATE INDEX captions_status ON captions(caption_status);
+  `,
+  // Status rules changed (a .txt edited after approval reads as edited): drop the
+  // signatures so the next scan re-reads every caption.
+  `
+  UPDATE captions SET txt_sig = NULL, json_sig = NULL;
   `,
 ];
 
