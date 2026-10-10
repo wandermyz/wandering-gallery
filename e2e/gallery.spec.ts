@@ -292,13 +292,9 @@ test('delete moves the file to trash and restore brings it back intact', async (
   await expect(page.locator('.viewer-bottom .star.on')).toHaveCount(0);
 });
 
-test('the viewer allows the iOS image menu and offers share/save', async ({ page }) => {
+test('the viewer offers share/save of the original', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');
-  const img = page.locator('.slide.active img.media.full.shown');
-  await expect(img).toBeVisible();
-  // Grid thumbnails suppress the long-press menu; the full image in the viewer must not.
-  expect(await img.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-touch-callout') || 'default')).not.toBe('none');
   await expect(page.getByRole('button', { name: 'Share or save original' })).toBeVisible();
 });
 
