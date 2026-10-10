@@ -306,3 +306,19 @@ holds them to that. Steps 4–5 are the only ones that change behavior.
 3. **The app always opens on Gallery.**
 4. **Phone navigation uses the drawer switcher**, with no bottom tab bar.
 5. **The app title stays "Gallery"** (browser tab, home-screen name) for now.
+
+## Progress (2026-10-10, branch `monorepo-refactor`)
+
+- Steps 0–5 and 5b are done. Step 6 (`AssetBrowser` extraction) is deferred to the Generate plan.
+- Baseline: 103 unit tests, 39 e2e tests, 21 screenshots, and live DB counts.
+- Steps 1–3: the build output is byte-identical to the baseline, and the screenshots are identical.
+- Step 2: the service now runs from `web/dist`. DB counts match, no thumbnails were regenerated,
+  and the live smoke test passes.
+- Steps 4–5: the original 39 e2e tests pass unmodified, and 12 new shell tests pass.
+  Phone screenshots are identical except the open drawer. Desktop differs only by the rail.
+  The gallery's main bundle grew by 1.7 KB gzipped (24.45 → 26.14 KB).
+- `lora/`: wandering-lora's `models/` ignore rule had kept `src/wlora/models` out of git. The copy
+  includes it, and its 15 tests pass.
+- Found but not fixed, because it's older than this refactor: opening a link with `?a=<id>`
+  directly (cold load) shows an empty viewer and throws in `Viewer`. The pointer-gesture effect runs
+  before the stage exists (`ViewerHost` first renders while the asset isn't loaded yet).
