@@ -25,6 +25,7 @@ export interface ViewerProps {
   onFavorite: (a: Asset) => void;
   onRate: (a: Asset, rating: number) => void;
   onDelete: (a: Asset) => void;
+  onShare: (a: Asset) => void;
   writable: (a: Asset) => boolean;
 }
 
@@ -460,6 +461,7 @@ export function Viewer(props: ViewerProps) {
             onClick={() => props.onFavorite(asset)}
           />
           <Stars value={asset.rating} onChange={(r) => props.onRate(asset, r)} size={26} />
+          <IconButton icon="share" label="Share or save original" onClick={() => props.onShare(asset)} />
           <IconButton icon="info" label="Details and metadata" active={info} onClick={() => setInfo((v) => !v)} />
           <IconButton
             icon="trash"

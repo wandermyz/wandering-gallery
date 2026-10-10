@@ -195,6 +195,25 @@ describe('HTTP API', () => {
   });
 });
 
+describe('frontend serving', () => {
+  it('serves assets added after startup and 404s unknown assets instead of returning HTML', async () => {
+    env = await makeEnv();
+    const web = path.join(env.root, 'web');
+    fs.mkdirSync(path.join(web, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(web, 'index.html'), '<!doctype html><script src="/assets/app-1.js"></script>');
+    app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: web });
+    // A rebuild writes new hashed files while the server keeps running.
+    fs.writeFileSync(path.join(web, 'assets', 'app-2.js'), 'console.log(2)');
+    const js = await app.inject({ url: '/assets/app-2.js' });
+    expect(js.statusCode).toBe(200);
+    expect(js.headers['content-type']).toMatch(/javascript/);
+    expect((await app.inject({ url: '/assets/gone.js' })).statusCode).toBe(404);
+    const spa = await app.inject({ url: '/trash?x=1' });
+    expect(spa.statusCode).toBe(200);
+    expect(spa.body).toContain('<!doctype html>');
+  });
+});
+
 describe('request protection', () => {
   it('requires a CSRF token for state-changing requests', async () => {
     await setup();

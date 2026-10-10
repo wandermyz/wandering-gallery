@@ -474,14 +474,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(fastifyStatic, {
     root: webRoot ?? process.cwd(),
     serve: !!webRoot,
-    wildcard: false,
+    // Look files up per request (not just those present at startup), so a rebuild
+    // with new hashed asset names never needs a restart to be served.
+    wildcard: true,
     setHeaders: (res, p) => {
       if (p.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       else res.setHeader('Cache-Control', 'no-cache');
     },
   });
   app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api/') || !webRoot || req.method !== 'GET') {
+    // Missing files under /assets/ must 404, not fall back to index.html (which a browser
+    // would try to run as JavaScript and render a blank page).
+    if (req.url.startsWith('/api/') || req.url.startsWith('/assets/') || !webRoot || req.method !== 'GET') {
       return reply.code(404).send({ error: 'not found' });
     }
     reply.header('Cache-Control', 'no-cache');

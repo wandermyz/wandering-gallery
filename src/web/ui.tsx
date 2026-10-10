@@ -13,6 +13,7 @@ const PATHS: Record<string, string> = {
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   restore: 'M4 12a8 8 0 108-8 8.2 8.2 0 00-6 2.7L4 9M4 4v5h5',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  share: 'M12 15V3M8 7l4-4 4 4M6 11H5v10h14V11h-1',
   filter: 'M4 6h16M7 12h10M10 18h4',
   folder: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   play: 'M8 5.5v13l11-6.5z',

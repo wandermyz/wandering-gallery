@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, ApiError, thumbUrl, type Asset, type Folder, type Library, type Query } from './api';
+import { api, ApiError, fileUrl, thumbUrl, type Asset, type Folder, type Library, type Query } from './api';
 import { Grid, type Density } from './Grid';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from './ui';
@@ -380,6 +380,39 @@ function App() {
     });
   };
 
+  // The fetched original is kept so a second tap can share instantly: iOS only allows
+  // navigator.share() shortly after a tap, and a large download can outlast that window.
+  const shareCache = useRef<{ id: number; v: string; file: File } | null>(null);
+  const onShare = async (a: Asset) => {
+    const download = () => {
+      const link = document.createElement('a');
+      link.href = `${fileUrl(a)}&download=1`;
+      link.download = a.name;
+      link.click();
+    };
+    if (!navigator.canShare) return download();
+    let file = shareCache.current?.id === a.id && shareCache.current.v === a.v ? shareCache.current.file : null;
+    if (!file) {
+      try {
+        const r = await fetch(fileUrl(a));
+        if (!r.ok) throw new Error(`${r.status}`);
+        file = new File([await r.blob()], a.name, { type: a.mime });
+        shareCache.current = { id: a.id, v: a.v, file };
+      } catch (e) {
+        toast(`Could not load file: ${(e as Error).message}`, { kind: 'error' });
+        return;
+      }
+    }
+    if (!navigator.canShare({ files: [file] })) return download();
+    try {
+      await navigator.share({ files: [file] });
+    } catch (e) {
+      const name = (e as DOMException).name;
+      if (name === 'NotAllowedError') toast('File ready. Tap Share again.');
+      else if (name !== 'AbortError') toast(`Share failed: ${(e as Error).message}`, { kind: 'error' });
+    }
+  };
+
   const openViewer = (index: number) => {
     const a = list.items[index];
     if (a) nav({ asset: a.id });
@@ -636,6 +669,7 @@ function App() {
             onFavorite={onFavorite}
             onRate={onRate}
             onDelete={onDelete}
+            onShare={onShare}
             writable={(a) => !!libById.get(a.library)?.writable}
             libName={(id) => libById.get(id)?.name ?? id}
           />
