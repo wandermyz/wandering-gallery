@@ -120,3 +120,19 @@ test('shows an error when ComfyUI is not running', async ({ page }) => {
   await page.getByRole('button', { name: 'Check again' }).click();
   await expect(page.locator('.banner-error[role="alert"]')).toHaveCount(0);
 });
+
+test('a LoRA flow has the same form, with its trigger tags in front', async ({ page }) => {
+  await page.goto('/generate/wai-illustrious-lora-mycat');
+  await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · My cat LoRA');
+  await page.locator('#gen-prompt').fill('a cat on a sofa');
+  await page.getByRole('button', { name: 'Generate tags' }).click();
+  await expect(page.locator('.gen-tags').first()).toHaveValue(/^mycat, cat, 1girl, base tags for a cat on a sofa$/);
+  await page.getByRole('button', { name: 'Fewer images per variation' }).click();
+  await page.getByRole('button', { name: 'Generate 2 images' }).click();
+  const run = page.locator('.gen-run').first();
+  await expect(run.locator('a.gen-thumb')).toHaveCount(2, { timeout: 20_000 });
+  await noHorizontalScroll(page);
+  // The plain flow's form is separate.
+  await page.goto(FLOW);
+  await expect(page.locator('#gen-prompt')).toHaveValue('');
+});

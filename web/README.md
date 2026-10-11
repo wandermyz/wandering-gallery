@@ -309,6 +309,29 @@ generate:
   promptsDir: ~/.config/wandering-gallery/prompts
 ```
 
+#### LoRA flows
+
+Each entry under `generate.loras` adds a flow *Generate → WAI-Illustrious · <title>*,
+at `/generate/wai-illustrious-lora-<id>`, with the same form. It uses
+`comfyui/workflows/wai-illustrious-lora-tags.*.json`, the same graph with a
+`LoraLoaderModelOnly` node. Its generated tags start with the LoRA's `tags`, and
+`dropTags` are removed from them. `negative` is appended to the negative prompt.
+The flow uses the same prompts file; an optional
+`<promptsDir>/wai-illustrious-lora-<id>.yaml` overrides any of its keys, e.g.
+`variationInstruction` and `traits` that change the scene instead of the character.
+
+```yaml
+generate:
+  loras:
+    - id: siggraph
+      title: Siggraph LoRA
+      lora: siggraph.safetensors     # as ComfyUI lists it under models/loras
+      strength: 1.0
+      tags: siggraph, cat, no humans, animal focus
+      negative: photo (medium), realistic, text, signature, watermark
+      dropTags: [1girl, 1boy, solo]
+```
+
 ## Supported formats
 
 | | Formats | Notes |

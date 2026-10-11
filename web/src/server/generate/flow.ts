@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import type { GenerateConfig } from '../config.js';
+import type { GenerateConfig, LoraFlowConfig } from '../config.js';
 import { HttpError } from '../paths.js';
 import type { Graph } from './comfy.js';
 
@@ -11,9 +11,13 @@ import type { Graph } from './comfy.js';
  *
  * The graph templates are in the repo with every prompt blanked; the prompt texts
  * come from a local YAML file that is never committed:
- * `<promptsDir>/wai-illustrious-tags.yaml`.
+ * `<promptsDir>/wai-illustrious-tags.yaml`. LoRA flows (`generate.loras` in the
+ * config) share that file and use the same graph with a LoRA loader (node 15); an
+ * optional `<promptsDir>/<flow id>.yaml` overrides any of its keys (e.g. traits that
+ * suit the subject).
  */
 export const FLOW_ID = 'wai-illustrious-tags';
+const PROMPTS_NAME = FLOW_ID;
 
 export interface FlowInfo {
   id: string;
@@ -37,10 +41,11 @@ export interface FlowPrompts {
   negativePrompt: string;
 }
 
-// Node ids in comfyui/workflows/wai-illustrious-tags.{api,ui}.json.
+// Node ids in comfyui/workflows/wai-illustrious-tags.{api,ui}.json; the -lora-tags
+// variant adds the LoRA loader.
 const N = {
   positive: '2', negative: '3', sampler: '5', save: '7',
-  prompt: '8', system: '9', qwen: '10', tagger: '11', quality: '12', concat: '13', preview: '14',
+  prompt: '8', system: '9', qwen: '10', tagger: '11', quality: '12', concat: '13', preview: '14', lora: '15',
 } as const;
 const TAG_NODES = [N.prompt, N.system, N.qwen, N.tagger];
 
@@ -50,14 +55,27 @@ export const MAX_PROMPT = 4000;
 export const MAX_TAGS = 4000;
 
 export class TagsFlow {
+  readonly id: string;
+  readonly title: string;
   readonly promptsFile: string;
+  /** Optional per-flow overrides of the shared prompts file (LoRA flows only). */
+  private readonly overridesFile: string | null;
   private readonly apiFile: string;
   private readonly uiFile: string;
 
-  constructor(cfg: GenerateConfig) {
-    this.promptsFile = path.join(cfg.promptsDir, `${FLOW_ID}.yaml`);
-    this.apiFile = path.join(cfg.workflowsDir, `${FLOW_ID}.api.json`);
-    this.uiFile = path.join(cfg.workflowsDir, `${FLOW_ID}.ui.json`);
+  constructor(cfg: GenerateConfig, private readonly lora: LoraFlowConfig | null = null) {
+    this.id = lora ? `wai-illustrious-lora-${lora.id}` : FLOW_ID;
+    this.title = lora ? `WAI-Illustrious · ${lora.title}` : 'WAI-Illustrious · prompt to tags';
+    const template = lora ? 'wai-illustrious-lora-tags' : FLOW_ID;
+    this.promptsFile = path.join(cfg.promptsDir, `${PROMPTS_NAME}.yaml`);
+    this.overridesFile = lora ? path.join(cfg.promptsDir, `${this.id}.yaml`) : null;
+    this.apiFile = path.join(cfg.workflowsDir, `${template}.api.json`);
+    this.uiFile = path.join(cfg.workflowsDir, `${template}.ui.json`);
+  }
+
+  /** The prompt-to-tags flow plus one per configured LoRA. */
+  static all(cfg: GenerateConfig): TagsFlow[] {
+    return [new TagsFlow(cfg), ...cfg.loras.map((l) => new TagsFlow(cfg, l))];
   }
 
   info(): FlowInfo {
@@ -67,7 +85,7 @@ export class TagsFlow {
     } catch (e) {
       problem = (e as Error).message;
     }
-    return { id: FLOW_ID, title: 'WAI-Illustrious · prompt to tags', ready: !problem, problem, promptsFile: this.promptsFile };
+    return { id: this.id, title: this.title, ready: !problem, problem, promptsFile: this.promptsFile };
   }
 
   /** Reads templates and prompts on every use, so edits apply without a restart. */
@@ -89,7 +107,10 @@ export class TagsFlow {
     } catch {
       throw new HttpError(`prompts file not found: ${this.promptsFile} (keys: ${PROMPT_KEYS.join(', ')})`, 409);
     }
-    return parsePrompts(text, this.promptsFile);
+    if (!this.overridesFile || !fs.existsSync(this.overridesFile)) return parsePrompts(text, this.promptsFile);
+    const base = parseYamlObject(text, this.promptsFile);
+    const over = parseYamlObject(fs.readFileSync(this.overridesFile, 'utf8'), this.overridesFile);
+    return parsePrompts(YAML.stringify({ ...base, ...over }), `${this.promptsFile} + ${this.overridesFile}`);
   }
 
   /** The tagging part of the workflow, ending in a text preview. */
@@ -112,11 +133,18 @@ export class TagsFlow {
     return g;
   }
 
-  /** Picks the tag text out of the tag graph's outputs. */
+  /**
+   * Picks the tag text out of the tag graph's outputs. LoRA flows put their trigger
+   * tags in front, so they are visible and editable with the rest, and drop the
+   * tags that don't fit their subject.
+   */
   tagsFrom(textOutputs: Record<string, string[]>): string {
     const t = textOutputs[N.preview]?.[0]?.trim();
     if (!t) throw new HttpError('the tagger returned no text', 502);
-    return t;
+    if (!this.lora) return t;
+    const prefix = splitTags(this.lora.tags);
+    const drop = new Set(this.lora.dropTags);
+    return [...prefix, ...splitTags(t).filter((x) => !prefix.includes(x) && !drop.has(x.toLowerCase()))].join(', ');
   }
 
   /**
@@ -128,9 +156,14 @@ export class TagsFlow {
     const { api, ui, prompts } = this.load();
     const g: Graph = structuredClone(api);
     for (const k of [...TAG_NODES, N.quality, N.concat, N.preview]) delete g[k];
+    const negative = [prompts.negativePrompt, this.lora?.negative ?? ''].filter(Boolean).join(', ');
     g[N.positive].inputs.text = `${prompts.qualityTags}, ${tags}`;
-    g[N.negative].inputs.text = prompts.negativePrompt;
+    g[N.negative].inputs.text = negative;
     g[N.sampler].inputs.seed = seed;
+    if (this.lora) {
+      if (!g[N.lora]) throw new HttpError(`workflow ${this.apiFile} has no LoRA node ${N.lora}`, 500);
+      Object.assign(g[N.lora].inputs, { lora_name: this.lora.lora, strength_model: this.lora.strength });
+    }
 
     const w: UiWorkflow = structuredClone(ui);
     const setWidget = (id: string, value: unknown) => {
@@ -140,25 +173,35 @@ export class TagsFlow {
     setWidget(N.prompt, description);
     setWidget(N.system, prompts.systemPrompt);
     setWidget(N.quality, prompts.qualityTags);
-    setWidget(N.negative, prompts.negativePrompt);
+    setWidget(N.negative, negative);
     setWidget(N.sampler, seed);
+    if (this.lora) {
+      const node = w.nodes.find((n) => String(n.id) === N.lora);
+      if (node) node.widgets_values = [this.lora.lora, this.lora.strength];
+    }
     return { graph: g, pnginfo: { workflow: w, source_prompt: description, tags } };
   }
 }
+
+const splitTags = (s: string) => s.split(',').map((t) => t.trim()).filter(Boolean);
 
 interface UiWorkflow {
   nodes: { id: number | string; widgets_values?: unknown }[];
   [k: string]: unknown;
 }
 
-export function parsePrompts(text: string, file: string): FlowPrompts {
+function parseYamlObject(text: string, file: string): Record<string, unknown> {
   let raw: unknown;
   try {
     raw = YAML.parse(text);
   } catch (e) {
     throw new HttpError(`invalid YAML in ${file}: ${(e as Error).message}`, 409);
   }
-  const o = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  return (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+}
+
+export function parsePrompts(text: string, file: string): FlowPrompts {
+  const o = parseYamlObject(text, file);
   const missing = PROMPT_KEYS.filter((k) => o[k] === undefined || o[k] === null);
   if (missing.length) throw new HttpError(`${file} is missing: ${missing.join(', ')}`, 409);
   const s = (k: keyof FlowPrompts, allowEmpty = false) => {

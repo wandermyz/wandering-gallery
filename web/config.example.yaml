@@ -48,6 +48,17 @@ trash:
 #   comfyCli: comfy-cli              # comfy-cli executable
 #   outputLibrary: comfyui           # library that holds ComfyUI's output folder
 #   promptsDir: ~/.config/wandering-gallery/prompts   # local prompt texts, never in git
+#   # One "prompt to tags" flow per LoRA (e.g. from `wlora train` in lora/). It shares the
+#   # prompts file of wai-illustrious-tags; <promptsDir>/wai-illustrious-lora-<id>.yaml can
+#   # override any of its keys.
+#   loras:
+#     - id: siggraph
+#       title: Siggraph LoRA
+#       lora: siggraph.safetensors        # as ComfyUI lists it under models/loras
+#       strength: 1.0
+#       tags: siggraph, cat               # put in front of the generated tags
+#       negative: photo (medium), realistic, text, signature, watermark   # appended
+#       dropTags: [1girl, 1boy, 2girls, 2boys, multiple girls, multiple boys]   # removed from generated tags
 
 # Hidden items (eye button in the viewer). Without a passphrase, hiding is off.
 # hidden:

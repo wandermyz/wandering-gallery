@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Db } from '../db.js';
 import { HttpError } from '../paths.js';
 import type { ComfyClient, OutputFile, Progress } from './comfy.js';
-import { FLOW_ID, randomSeed, type TagsFlow } from './flow.js';
+import { randomSeed, type TagsFlow } from './flow.js';
 
 export type JobStatus = 'pending' | 'queued' | 'running' | 'completed' | 'error' | 'cancelled';
 
@@ -64,7 +64,7 @@ export class Runs {
     flow.prompts(); // fail early when the prompts file is missing
     const run: Run = {
       id: crypto.randomBytes(6).toString('hex'),
-      flow: FLOW_ID,
+      flow: flow.id,
       createdAtMs: Date.now(),
       finishedAtMs: null,
       prompt,

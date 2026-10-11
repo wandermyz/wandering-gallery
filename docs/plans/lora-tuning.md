@@ -1,6 +1,6 @@
 # Plan: LoRA training and semi-automatic tuning
 
-Status: in progress · 2026-10-11 (phases 1–2 implemented; hill-climbing done by hand for now)
+Status: in progress · 2026-10-11 (phases 1–2 implemented; Siggraph tuned by hand to r003 e14; phases 3–4 not built)
 
 ## Goal
 
@@ -98,7 +98,24 @@ LoRA strength (0.6 / 0.8 / 1.0) through ComfyUI, then scores it.
 | r003 | rank 32/16 | **champion**: e14 @ 1.0, round eyes, keeps chibi style |
 | r004 | `orange eyes` tags | too saturated, tints the whole scene orange |
 
-The user ranked F (r003 e14 @ 1.0) > D (r002 e10 @ 1.0) > A (r001 e10 @ 1.0).
+| r005 | rank 32 + lr 1.5e-4 | about the same as r003 |
+| r006 | rank 32 + `amber eyes` tags | best hue and chibi, still tints scenes amber |
+| r007 | rank 64/32 | sharpest markings; twice the file size |
+
+- Round 1: the user ranked r003 e14 @ 1.0 > r002 e10 @ 1.0 > r001 e10 @ 1.0.
+- Round 2: no single winner; preferences split by prompt.
+- Round 3: the four finalists over 4 seeds (`wlora eval --seeds`) looked nearly
+  alike within each seed: the seed mattered more than the training differences.
+  **Chosen: r003 epoch 14 @ 1.0**, installed as `models/loras/siggraph.safetensors`
+  and used by the gallery's LoRA flow (`generate.loras`).
+
+Lessons for the automated version:
+
+- Compare close candidates on several seeds; one seed per prompt only shows big
+  differences.
+- Eye-colour tags in the captions fix the eyes but tint the whole scene.
+- Rank mattered more than learning rate; the best epochs were near the end
+  (10–14 of 16) at strength 1.0.
 
 ## Phase 3: hill-climbing
 
