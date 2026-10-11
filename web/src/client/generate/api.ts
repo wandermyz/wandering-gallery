@@ -54,5 +54,6 @@ export const genApi = {
     request<Run>('POST', `/api/generate/flows/${flow}/runs`, { prompt, variations, batch }),
   runs: () => request<{ runs: Run[] }>('GET', '/api/generate/runs'),
   run: (id: string) => request<Run>('GET', `/api/generate/runs/${id}`),
+  clearRuns: (flow: string) => request<{ cleared: number }>('POST', `/api/generate/flows/${flow}/runs/clear`),
   cancel: (id: string) => request<Run>('POST', `/api/generate/runs/${id}/cancel`),
 };

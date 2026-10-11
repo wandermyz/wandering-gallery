@@ -242,6 +242,21 @@ describe('generate API', () => {
     expect((await post('/api/generate/runs/nope/cancel')).statusCode).toBe(404);
   });
 
+  it('clears finished runs and keeps running ones', async () => {
+    await setup();
+    const start = async () => (await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a girl', variations: ['t'], batch: 1 })).json();
+    const done = await start();
+    await tick();
+    comfy.finish('p1', { status: 'completed', outputs: [], error: null });
+    await tick();
+    const running = await start();
+    const r = await post('/api/generate/flows/wai-illustrious-tags/runs/clear');
+    expect(r.json()).toEqual({ cleared: 1 });
+    const ids = (await app.inject({ url: '/api/generate/runs' })).json().runs.map((x: { id: string }) => x.id);
+    expect(ids).toEqual([running.id]);
+    expect(ids).not.toContain(done.id);
+  });
+
   it('fails the request when nothing could be queued', async () => {
     await setup();
     comfy.online = false;

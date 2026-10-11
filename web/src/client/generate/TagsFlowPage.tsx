@@ -175,6 +175,22 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
     }
   };
 
+  const clearHistory = async () => {
+    const running = runs.some((r) => r.status === 'running');
+    const ok = await ask({
+      title: 'Clear history?',
+      message: <p>Finished runs are removed from this list{running ? '; running ones stay' : ''}. The images stay in the gallery.</p>,
+      confirm: 'Clear',
+    });
+    if (!ok) return;
+    try {
+      await genApi.clearRuns(flow.id);
+      await loadRuns();
+    } catch (e) {
+      onError((e as Error).message, e);
+    }
+  };
+
   const reuse = (run: Run) => {
     setDraft(flow.id, { prompt: run.prompt, variations: run.variations, batch: run.batch });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -228,7 +244,14 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
         </button>
       </section>
 
-      {runs.length > 0 && <h2 class="gen-h2">Runs</h2>}
+      {runs.length > 0 && (
+        <div class="gen-h2-row">
+          <h2 class="gen-h2">Runs</h2>
+          <button type="button" class="btn btn-sm" disabled={runs.every((r) => r.status === 'running')} onClick={() => void clearHistory()}>
+            <Icon name="trash" size={16} />Clear
+          </button>
+        </div>
+      )}
       {runs.map((run) => <RunCard key={run.id} run={run} onCancel={() => void cancel(run)} onReuse={() => reuse(run)} />)}
 
       <ConfirmDialog opts={confirm?.opts ?? null} onResult={(ok) => { confirm?.resolve(ok); setConfirm(null); }} />

@@ -68,6 +68,11 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, c
     return runs.json(runs.get((req.params as { id: string }).id));
   });
 
+  app.post('/api/generate/flows/:flow/runs/clear', async (req) => {
+    getFlow((req.params as { flow: string }).flow);
+    return { cleared: runs.clear(FLOW_ID) };
+  });
+
   app.post('/api/generate/runs/:id/cancel', async (req) => {
     return runs.json(await runs.cancel((req.params as { id: string }).id));
   });

@@ -69,6 +69,12 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await page.locator('#gen-prompt').fill('something else');
   await page.locator('.gen-run').first().getByRole('button', { name: 'Reuse' }).click();
   await expect(page.locator('#gen-prompt')).toHaveValue('a girl at the beach');
+
+  // Clear empties the history; the images stay in the gallery.
+  await page.locator('.gen-h2-row').getByRole('button', { name: 'Clear' }).click();
+  await page.locator('.dialog').getByRole('button', { name: 'Clear' }).click();
+  await expect(page.locator('.gen-run')).toHaveCount(0);
+  await expect(page.locator('.gen-h2')).toHaveCount(0);
 });
 
 test('a running batch can be cancelled', async ({ page }) => {

@@ -520,7 +520,8 @@ video.media { width: 100%; height: 100%; background: #000; }
 .gen-var-head { display: flex; align-items: center; gap: 2px; margin: -8px -8px 2px 0; }
 .gen-var-head .gen-label { flex: 1; margin: 0; }
 .gen-var .spinner-wrap { min-height: 84px; }
-.gen-h2 { margin: 12px 4px 0; font-size: 15px; font-weight: 650; color: var(--muted); }
+.gen-h2-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 4px 0; }
+.gen-h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--muted); }
 
 .stepper { display: flex; align-items: center; gap: 10px; }
 .stepper-label { font-size: 14px; color: var(--muted); }

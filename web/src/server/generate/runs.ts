@@ -156,6 +156,18 @@ export class Runs {
     return run;
   }
 
+  /** Forgets finished runs of a flow (their images stay in the gallery). Returns how many. */
+  clear(flow: string): number {
+    let n = 0;
+    for (const r of this.runs.values()) {
+      if (r.flow === flow && r.status !== 'running') {
+        this.runs.delete(r.id);
+        n++;
+      }
+    }
+    return n;
+  }
+
   /** Stops watching (server shutdown). Jobs keep running in ComfyUI. */
   close() {
     for (const ac of this.aborts.values()) ac.abort();
