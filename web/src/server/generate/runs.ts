@@ -30,14 +30,16 @@ export interface Run {
   status: 'running' | 'completed' | 'error' | 'cancelled';
 }
 
-/** Runs kept in memory (oldest finished ones are dropped first). */
-const KEEP = 30;
+/** A finished run stays fetchable by id this long, so an open page sees its final state. */
+const FINISHED_TTL_MS = 10 * 60_000;
 export const MAX_VARIATIONS = 12;
 export const MAX_BATCH = 16;
 
 /**
- * Tracks generation runs in memory. All jobs of a run are queued at once (ComfyUI
- * runs them in order); they are then watched one at a time with comfy-cli.
+ * Tracks the runs being worked on, in memory only. All jobs of a run are queued at
+ * once (ComfyUI runs them in order) and then watched one at a time with comfy-cli.
+ * Finished runs are forgotten: they drop out of `list()` at once and out of `get()`
+ * after FINISHED_TTL_MS. The images are in the gallery.
  */
 export class Runs {
   private readonly runs = new Map<string, Run>();
@@ -46,8 +48,9 @@ export class Runs {
   constructor(private readonly comfy: ComfyClient, private readonly db: Db, private readonly outputLibrary: string | null,
     private readonly log: { warn: (o: object, msg: string) => void } = { warn() {} }) {}
 
+  /** Runs still being worked on, newest first. */
   list(): Run[] {
-    return [...this.runs.values()].sort((a, b) => b.createdAtMs - a.createdAtMs);
+    return [...this.runs.values()].filter((r) => r.status === 'running').sort((a, b) => b.createdAtMs - a.createdAtMs);
   }
 
   get(id: string): Run {
@@ -83,17 +86,9 @@ export class Runs {
         job.error = (e as Error).message;
       }
     }
-    this.add(run);
+    this.runs.set(run.id, run);
     void this.watch(run);
     return run;
-  }
-
-  private add(run: Run) {
-    this.runs.set(run.id, run);
-    for (const r of this.list().reverse()) {
-      if (this.runs.size <= KEEP) break;
-      if (r.status !== 'running') this.runs.delete(r.id);
-    }
   }
 
   private async watch(run: Run) {
@@ -130,6 +125,7 @@ export class Runs {
     run.status = status ?? (run.jobs.every((j) => j.status === 'completed') ? 'completed'
       : run.jobs.some((j) => j.status === 'error') ? 'error' : run.jobs.some((j) => j.status === 'cancelled') ? 'cancelled' : 'completed');
     run.finishedAtMs = Date.now();
+    setTimeout(() => this.runs.delete(run.id), FINISHED_TTL_MS).unref();
   }
 
   /** Cancels every job that has not finished. */
@@ -154,18 +150,6 @@ export class Runs {
     this.finish(run, 'cancelled');
     if (failure) throw failure;
     return run;
-  }
-
-  /** Forgets finished runs of a flow (their images stay in the gallery). Returns how many. */
-  clear(flow: string): number {
-    let n = 0;
-    for (const r of this.runs.values()) {
-      if (r.flow === flow && r.status !== 'running') {
-        this.runs.delete(r.id);
-        n++;
-      }
-    }
-    return n;
   }
 
   /** Stops watching (server shutdown). Jobs keep running in ComfyUI. */

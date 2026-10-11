@@ -52,8 +52,8 @@ export const genApi = {
   tags: (flow: string, prompt: string, vary: boolean) => request<{ tags: string }>('POST', `/api/generate/flows/${flow}/tags`, { prompt, vary }),
   start: (flow: string, prompt: string, variations: string[], batch: number) =>
     request<Run>('POST', `/api/generate/flows/${flow}/runs`, { prompt, variations, batch }),
+  /** Runs still being worked on. */
   runs: () => request<{ runs: Run[] }>('GET', '/api/generate/runs'),
   run: (id: string) => request<Run>('GET', `/api/generate/runs/${id}`),
-  clearRuns: (flow: string) => request<{ cleared: number }>('POST', `/api/generate/flows/${flow}/runs/clear`),
   cancel: (id: string) => request<Run>('POST', `/api/generate/runs/${id}/cancel`),
 };

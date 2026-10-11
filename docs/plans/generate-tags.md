@@ -34,9 +34,8 @@ through `comfy-cli` wherever it offers the operation.
   instruction, the trait lists, the quality tags and the negative prompt are read
   from a local file, `~/.config/wandering-gallery/prompts/wai-illustrious-tags.yaml`.
   If the file is missing, the page says so and lists the keys it needs.
-- **Runs are tracked in server memory** (most recent 30): they survive closing or
-  reloading the page, but not a server restart. The images are in the gallery
-  either way.
+- **Only runs in progress are tracked** (server memory). A reload shows those, with
+  an empty form; finished runs are forgotten. The images are in the gallery.
 - **ComfyUI not running → error message.** The app never starts ComfyUI.
 - Output images are matched to gallery assets through `generate.outputLibrary`
   (default: the library with id `comfyui`).
@@ -60,7 +59,7 @@ generate:
 | GET | `/api/generate/status` | ComfyUI reachable? |
 | POST | `/api/generate/flows/:flow/tags` | `{prompt, vary}` → `{tags}` |
 | POST | `/api/generate/flows/:flow/runs` | `{prompt, variations[], batch}` → run |
-| GET | `/api/generate/runs` | recent runs |
+| GET | `/api/generate/runs` | runs still in progress |
 | GET | `/api/generate/runs/:id` | one run (jobs, progress, outputs → asset ids) |
 | POST | `/api/generate/runs/:id/cancel` | cancel unfinished jobs |
 

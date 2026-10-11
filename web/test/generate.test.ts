@@ -224,7 +224,7 @@ describe('generate API', () => {
     comfy.finish('p4', { status: 'completed', outputs: [], error: null });
     await tick();
     expect((await get()).status).toBe('error');
-    expect((await app.inject({ url: '/api/generate/runs' })).json().runs.map((x: { id: string }) => x.id)).toEqual([run.id]);
+    expect((await app.inject({ url: '/api/generate/runs' })).json().runs).toEqual([]);
   });
 
   it('cancels the unfinished jobs of a run', async () => {
@@ -242,7 +242,7 @@ describe('generate API', () => {
     expect((await post('/api/generate/runs/nope/cancel')).statusCode).toBe(404);
   });
 
-  it('clears finished runs and keeps running ones', async () => {
+  it('lists only the runs still being worked on', async () => {
     await setup();
     const start = async () => (await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a girl', variations: ['t'], batch: 1 })).json();
     const done = await start();
@@ -250,11 +250,9 @@ describe('generate API', () => {
     comfy.finish('p1', { status: 'completed', outputs: [], error: null });
     await tick();
     const running = await start();
-    const r = await post('/api/generate/flows/wai-illustrious-tags/runs/clear');
-    expect(r.json()).toEqual({ cleared: 1 });
-    const ids = (await app.inject({ url: '/api/generate/runs' })).json().runs.map((x: { id: string }) => x.id);
-    expect(ids).toEqual([running.id]);
-    expect(ids).not.toContain(done.id);
+    expect((await app.inject({ url: '/api/generate/runs' })).json().runs.map((x: { id: string }) => x.id)).toEqual([running.id]);
+    // An open page can still fetch the finished run's final state.
+    expect((await app.inject({ url: `/api/generate/runs/${done.id}` })).json().status).toBe('completed');
   });
 
   it('fails the request when nothing could be queued', async () => {

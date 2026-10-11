@@ -13,8 +13,6 @@ async function noHorizontalScroll(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await comfyOnline(true);
-  await page.goto('/gallery');
-  await page.evaluate(() => localStorage.clear());
 });
 
 test('describe, tag variations, edit them and generate a batch', async ({ page }) => {
@@ -43,10 +41,6 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await expect(tags.nth(0)).toHaveValue(/base tags/);
   await expect(tags.nth(1)).toHaveValue('1girl, edited tags');
 
-  // The draft survives a reload.
-  await page.reload();
-  await expect(page.locator('#gen-prompt')).toHaveValue('a girl at the beach');
-  await expect(tags.nth(1)).toHaveValue('1girl, edited tags');
 
   await page.getByRole('button', { name: 'Fewer images per variation' }).click();
   await page.getByRole('button', { name: 'Generate 4 images' }).click();
@@ -63,18 +57,40 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await expect(page.locator('.viewer-name')).toHaveText(/^fake_\d+_\.png$/);
   await page.getByRole('button', { name: 'Back to gallery' }).click();
   await expect(page).toHaveURL(new RegExp(`${FLOW}$`));
+  // The form and the finished run are still there.
   await expect(page.locator('.gen-run').first().locator('a.gen-thumb')).toHaveCount(4);
+  await expect(tags.nth(1)).toHaveValue('1girl, edited tags');
 
   // Reuse puts the run's prompt and tags back into the form.
   await page.locator('#gen-prompt').fill('something else');
   await page.locator('.gen-run').first().getByRole('button', { name: 'Reuse' }).click();
   await expect(page.locator('#gen-prompt')).toHaveValue('a girl at the beach');
 
-  // Clear empties the history; the images stay in the gallery.
+  // Clear removes finished runs from the page.
   await page.locator('.gen-h2-row').getByRole('button', { name: 'Clear' }).click();
-  await page.locator('.dialog').getByRole('button', { name: 'Clear' }).click();
   await expect(page.locator('.gen-run')).toHaveCount(0);
-  await expect(page.locator('.gen-h2')).toHaveCount(0);
+
+  // A reload starts blank: finished runs and the form are not kept.
+  await page.locator('#gen-prompt').fill('draft');
+  await page.reload();
+  await expect(page.locator('#gen-prompt')).toHaveValue('');
+  await expect(page.locator('.gen-var')).toHaveCount(1);
+  await expect(page.locator('.gen-run')).toHaveCount(0);
+});
+
+test('a run still in progress shows again after a reload', async ({ page }) => {
+  await page.goto(FLOW);
+  await page.locator('#gen-prompt').fill('slow run');
+  await page.locator('.gen-tags').first().fill('1girl, by hand');
+  await page.getByRole('button', { name: 'More images per variation' }).click();
+  await page.getByRole('button', { name: 'Generate 4 images' }).click();
+  await expect(page.locator('.gen-run .cap-pill')).toHaveText('Running');
+  await page.reload();
+  const run = page.locator('.gen-run');
+  await expect(run).toHaveCount(1);
+  await expect(run.locator('.gen-run-prompt')).toHaveText('slow run');
+  await expect(run.locator('a.gen-thumb')).toHaveCount(4, { timeout: 20_000 });
+  await expect(run.locator('.cap-pill')).toHaveText('Done');
 });
 
 test('a running batch can be cancelled', async ({ page }) => {

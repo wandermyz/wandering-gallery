@@ -8,94 +8,36 @@ import { genApi, type FlowInfo, type Job, type Run } from './api';
 const MAX_VARIATIONS = 12;
 const MAX_BATCH = 16;
 
-// ---- Draft: survives leaving the page (localStorage) and keeps tag requests that
-// finish while the page is not mounted.
+/** Finished images may take a few seconds to be indexed; keep polling for them this long. */
+const INDEX_WAIT_MS = 60_000;
 
-interface Draft {
-  prompt: string;
-  variations: string[];
-  batch: number;
-}
-
-const draftKey = (flow: string) => `wg:generate:${flow}`;
-
-function loadDraft(flow: string): Draft {
-  try {
-    const d = JSON.parse(localStorage.getItem(draftKey(flow)) ?? '') as Partial<Draft>;
-    const variations = Array.isArray(d.variations) ? d.variations.filter((v) => typeof v === 'string').slice(0, MAX_VARIATIONS) : [];
-    return {
-      prompt: typeof d.prompt === 'string' ? d.prompt : '',
-      variations: variations.length ? variations : [''],
-      batch: Number.isInteger(d.batch) ? Math.min(MAX_BATCH, Math.max(1, d.batch!)) : 3,
-    };
-  } catch {
-    return { prompt: '', variations: [''], batch: 3 };
-  }
-}
-
-const drafts = new Map<string, Draft>();
-/** Indexes of variations whose tags are being generated, per flow. */
-const busy = new Map<string, Set<number>>();
-const listeners = new Set<() => void>();
-
-function getDraft(flow: string): Draft {
-  if (!drafts.has(flow)) drafts.set(flow, loadDraft(flow));
-  return drafts.get(flow)!;
-}
-
-function setDraft(flow: string, patch: Partial<Draft> | ((d: Draft) => Partial<Draft>)) {
-  const cur = getDraft(flow);
-  const next = { ...cur, ...(typeof patch === 'function' ? patch(cur) : patch) };
-  drafts.set(flow, next);
-  try {
-    localStorage.setItem(draftKey(flow), JSON.stringify(next));
-  } catch {
-    /* private mode */
-  }
-  for (const l of listeners) l();
-}
-
-function useDraft(flow: string): [Draft, Set<number>] {
-  const [, force] = useState(0);
-  useEffect(() => {
-    const on = () => force((n) => n + 1);
-    listeners.add(on);
-    return () => void listeners.delete(on);
-  }, []);
-  if (!busy.has(flow)) busy.set(flow, new Set());
-  return [getDraft(flow), busy.get(flow)!];
-}
-
-/**
- * Generates tags for one variation. Variation 1 is the description as-is; the others
- * ask for a distinct character. Requests run one after another, like ComfyUI does.
- */
+// Page state lives in memory outside the component, so it survives switching to the
+// gallery (e.g. to view an image) and back, but not a reload. Setters keep working while
+// the page is not shown, so tag requests and runs that finish meanwhile are not lost.
+const kept = new Map<string, unknown>();
 let tagQueue: Promise<unknown> = Promise.resolve();
-function generateTags(flow: string, index: number, onError: (msg: string, e: unknown) => void) {
-  const set = busy.get(flow)!;
-  if (set.has(index)) return;
-  const prompt = getDraft(flow).prompt.trim();
-  set.add(index);
-  setDraft(flow, {});
-  tagQueue = tagQueue.then(async () => {
-    try {
-      const { tags } = await genApi.tags(flow, prompt, index > 0);
-      // The variation may have been removed meanwhile (index beyond the list).
-      setDraft(flow, (d) => (index < d.variations.length ? { variations: d.variations.map((v, i) => (i === index ? tags : v)) } : {}));
-    } catch (e) {
-      onError(`Variation ${index + 1}: ${(e as Error).message}`, e);
-    } finally {
-      set.delete(index);
-      setDraft(flow, {});
-    }
-  });
+
+function useKept<T>(key: string, init: T): [T, (v: T | ((cur: T) => T)) => void] {
+  if (!kept.has(key)) kept.set(key, init);
+  const [value, setValue] = useState(kept.get(key) as T);
+  const set = useCallback((v: T | ((cur: T) => T)) => {
+    const next = typeof v === 'function' ? (v as (cur: T) => T)(kept.get(key) as T) : v;
+    kept.set(key, next);
+    setValue(next);
+  }, [key]);
+  return [value, set];
 }
 
-// ---- Page --------------------------------------------------------------------------
+const unindexed = (r: Run) => r.jobs.some((j) => j.status === 'completed' && j.outputs.some((o) => !o.asset));
 
 export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDown: () => void }) {
-  const [draft, generating] = useDraft(flow.id);
-  const [runs, setRuns] = useState<Run[]>([]);
+  const k = (name: string) => `${flow.id}:${name}`;
+  const [prompt, setPrompt] = useKept(k('prompt'), '');
+  const [variations, setVariations] = useKept<string[]>(k('variations'), ['']);
+  const [batch, setBatch] = useKept(k('batch'), 3);
+  /** Indexes of variations whose tags are being generated. */
+  const [generating, setGenerating] = useKept<Set<number>>(k('generating'), new Set());
+  const [runs, setRuns] = useKept<Run[]>(k('runs'), []);
   const [starting, setStarting] = useState(false);
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const [confirm, setConfirm] = useState<{ opts: ConfirmOptions; resolve: (ok: boolean) => void } | null>(null);
@@ -112,52 +54,70 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
     toast(msg, 'error');
   }, [toast, onComfyDown]);
 
-  // Runs: poll while one is active, or while finished images are still being indexed.
-  const loadRuns = useCallback(async () => {
-    try {
-      setRuns((await genApi.runs()).runs.filter((r) => r.flow === flow.id));
-    } catch {
-      /* keep the last list */
-    }
+  // The server only knows the runs still being worked on (e.g. started before a reload);
+  // finished ones stay on the page until it is reloaded.
+  useEffect(() => {
+    genApi.runs().then((r) => setRuns((rs) => [...r.runs.filter((x) => x.flow === flow.id && !rs.some((y) => y.id === x.id)), ...rs]), () => {});
   }, [flow.id]);
-  useEffect(() => void loadRuns(), [loadRuns]);
-  const active = runs.some((r) => r.status === 'running' ||
-    (Date.now() - (r.finishedAtMs ?? 0) < 60_000 && r.jobs.some((j) => j.status === 'completed' && j.outputs.some((o) => !o.asset))));
+  const active = runs.some((r) => r.status === 'running' || (unindexed(r) && Date.now() - (r.finishedAtMs ?? 0) < INDEX_WAIT_MS));
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => void loadRuns(), 1500);
+    const t = setInterval(async () => {
+      const fresh = await Promise.all(runs.filter((r) => r.status === 'running' || unindexed(r)).map((r) => genApi.run(r.id).catch(() => null)));
+      const byId = new Map(fresh.filter((r): r is Run => !!r).map((r) => [r.id, r]));
+      setRuns((rs) => rs.map((r) => byId.get(r.id) ?? r));
+    }, 1500);
     return () => clearInterval(t);
-  }, [active, loadRuns]);
+  }, [active, runs]);
 
-  const { prompt, variations, batch } = draft;
   const empty = variations.map((v, i) => (!v.trim() && !generating.has(i) ? i : -1)).filter((i) => i >= 0);
   const canTag = !!prompt.trim() && flow.ready;
   const busyTags = generating.size > 0;
 
+  /** Variation 1 is the description as-is; the others ask for a distinct character. */
+  const generateTags = (index: number) => {
+    const text = prompt.trim();
+    setGenerating((g) => new Set(g).add(index));
+    // One request at a time, as ComfyUI would run them anyway.
+    tagQueue = tagQueue.then(async () => {
+      try {
+        const { tags } = await genApi.tags(flow.id, text, index > 0);
+        setVariations((vs) => vs.map((v, i) => (i === index ? tags : v)));
+      } catch (e) {
+        onError(`Variation ${index + 1}: ${(e as Error).message}`, e);
+      } finally {
+        setGenerating((g) => {
+          const n = new Set(g);
+          n.delete(index);
+          return n;
+        });
+      }
+    });
+  };
+
   const setCount = (n: number) => {
     n = Math.min(MAX_VARIATIONS, Math.max(1, n));
-    setDraft(flow.id, (d) => ({ variations: n > d.variations.length ? [...d.variations, ...Array(n - d.variations.length).fill('')] : d.variations.slice(0, n) }));
+    setVariations((vs) => (n > vs.length ? [...vs, ...Array<string>(n - vs.length).fill('')] : vs.slice(0, n)));
   };
 
   const fillTags = async () => {
     if (empty.length) {
-      for (const i of empty) generateTags(flow.id, i, onError);
+      empty.forEach(generateTags);
       return;
     }
     const ok = await ask({ title: 'Regenerate all tags?', message: <p>Every variation, including your edits, is replaced.</p>, confirm: 'Regenerate' });
-    if (ok) variations.forEach((_, i) => generateTags(flow.id, i, onError));
+    if (ok) variations.forEach((_, i) => generateTags(i));
   };
 
   const removeVariation = (index: number) => {
-    if (generating.size) return;
-    setDraft(flow.id, (d) => ({ variations: d.variations.length > 1 ? d.variations.filter((_, i) => i !== index) : [''] }));
+    setVariations((vs) => (vs.length > 1 ? vs.filter((_, i) => i !== index) : ['']));
   };
 
   const start = async () => {
     setStarting(true);
     try {
       const run = await genApi.start(flow.id, prompt.trim(), variations.map((v) => v.trim()), batch);
-      setRuns((rs) => [run, ...rs.filter((r) => r.id !== run.id)]);
+      setRuns((rs) => [run, ...rs]);
       toast(`Queued ${run.jobs.length} image${run.jobs.length > 1 ? 's' : ''}`);
     } catch (e) {
       onError((e as Error).message, e);
@@ -175,24 +135,10 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
     }
   };
 
-  const clearHistory = async () => {
-    const running = runs.some((r) => r.status === 'running');
-    const ok = await ask({
-      title: 'Clear history?',
-      message: <p>Finished runs are removed from this list{running ? '; running ones stay' : ''}. The images stay in the gallery.</p>,
-      confirm: 'Clear',
-    });
-    if (!ok) return;
-    try {
-      await genApi.clearRuns(flow.id);
-      await loadRuns();
-    } catch (e) {
-      onError((e as Error).message, e);
-    }
-  };
-
   const reuse = (run: Run) => {
-    setDraft(flow.id, { prompt: run.prompt, variations: run.variations, batch: run.batch });
+    setPrompt(run.prompt);
+    setVariations(run.variations);
+    setBatch(run.batch);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -205,7 +151,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
       <section class="gen-card">
         <label class="gen-label" for="gen-prompt">Description <span class="muted">中文 / English</span></label>
         <textarea id="gen-prompt" class="cap-text gen-prompt" rows={3} value={prompt} placeholder="Describe the image (中文 / English)"
-          onInput={(e) => setDraft(flow.id, { prompt: e.currentTarget.value })} />
+          onInput={(e) => setPrompt(e.currentTarget.value)} />
         <div class="gen-row">
           <Stepper label="Tag variations" value={variations.length} min={1} max={MAX_VARIATIONS} onChange={setCount} disabled={busyTags} />
           <button type="button" class="btn btn-primary" disabled={!canTag || busyTags} onClick={() => void fillTags()}>
@@ -219,7 +165,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
           <li key={i} class="gen-card gen-var">
             <div class="gen-var-head">
               <span class="gen-label">Variation {i + 1}{i === 0 && <span class="muted"> · as described</span>}</span>
-              <IconButton icon="refresh" label={`Regenerate variation ${i + 1}`} disabled={!canTag || generating.has(i)} onClick={() => generateTags(flow.id, i, onError)} />
+              <IconButton icon="refresh" label={`Regenerate variation ${i + 1}`} disabled={!canTag || generating.has(i)} onClick={() => generateTags(i)} />
               <IconButton icon="close" label={`Remove variation ${i + 1}`} disabled={busyTags || (variations.length === 1 && !v)} onClick={() => removeVariation(i)} />
             </div>
             {generating.has(i) ? (
@@ -229,7 +175,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
                 placeholder={canTag ? 'Generate tags, or type them here' : 'Danbooru tags, comma separated'}
                 onInput={(e) => {
                   const text = e.currentTarget.value;
-                  setDraft(flow.id, (d) => ({ variations: d.variations.map((x, j) => (j === i ? text : x)) }));
+                  setVariations((vs) => vs.map((x, j) => (j === i ? text : x)));
                 }} />
             )}
           </li>
@@ -237,7 +183,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
       </ol>
 
       <section class="gen-card gen-row gen-go">
-        <Stepper label="Images per variation" value={batch} min={1} max={MAX_BATCH} onChange={(n) => setDraft(flow.id, { batch: n })} />
+        <Stepper label="Images per variation" value={batch} min={1} max={MAX_BATCH} onChange={setBatch} />
         <button type="button" class="btn btn-primary" disabled={!canRun} onClick={() => void start()}>
           {starting ? <span class="spinner spinner-sm" /> : <Icon name="play" size={16} />}
           Generate {total} image{total > 1 ? 's' : ''}
@@ -247,7 +193,8 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
       {runs.length > 0 && (
         <div class="gen-h2-row">
           <h2 class="gen-h2">Runs</h2>
-          <button type="button" class="btn btn-sm" disabled={runs.every((r) => r.status === 'running')} onClick={() => void clearHistory()}>
+          <button type="button" class="btn btn-sm" disabled={runs.every((r) => r.status === 'running')}
+            onClick={() => setRuns((rs) => rs.filter((r) => r.status === 'running'))}>
             <Icon name="trash" size={16} />Clear
           </button>
         </div>

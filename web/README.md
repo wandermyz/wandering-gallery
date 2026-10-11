@@ -221,9 +221,11 @@ WAI-Illustrious:
 2. Edit any variation's tags, regenerate or remove single ones.
 3. Choose **images per variation** and *Generate*. Every variation × image is a
    ComfyUI job with its own random seed. Progress and finished images show under
-   *Runs*; tapping one opens it in the gallery viewer. Runs are kept in server
-   memory (they survive closing the page, not a restart), and *Reuse* puts a run's
+   *Runs*; tapping one opens it in the gallery viewer, and *Reuse* puts a run's
    description and tags back into the form.
+
+Nothing is kept: a reload starts with an empty form and only shows runs that are
+still being worked on. Finished images are in the gallery.
 
 Each PNG carries the UI workflow, the source description and the tags, so it can
 be dragged back into ComfyUI.
