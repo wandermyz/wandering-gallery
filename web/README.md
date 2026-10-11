@@ -164,6 +164,7 @@ experience.
 | Rate | tap a star (tap again to clear) | `0`–`5` |
 | Add a tag | ⓘ → *Tags* | `T` |
 | Details / metadata | ⓘ button | `I` |
+| Hide / unhide | eye button (when hiding is set up) | — |
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
 
@@ -192,6 +193,41 @@ browse its images across all libraries, including those with
 there (renaming it to an existing tag merges the two) or delete it. Tags live
 only in SQLite. They stay with a file when it's renamed, moved or trashed and
 restored, and go away when it's permanently deleted.
+
+### Hidden items
+
+Individual images and videos can be hidden with the eye button in the viewer.
+Hidden items are left out of every list (grid, counts, trash), never used as
+a folder cover, and the server answers `404` for them (details, metadata,
+thumbnail, file) unless the browser is unlocked.
+
+To set it up, hash a passphrase and add it to the config:
+
+```bash
+cd web && npm run hash-passphrase     # prompts twice, prints the hash
+```
+
+```yaml
+hidden:
+  passphraseHash: scrypt:32768:8:1:...   # from npm run hash-passphrase
+  unlockMinutes: 15                      # optional, default 15
+```
+
+The 🔒 button in the top bar then asks for the passphrase. Unlocking shows hidden
+items, with a small eye badge, mixed into the normal grid in that browser for
+15 minutes. It's a fixed time from unlocking, and the button shows the
+countdown and can lock again early. The unlock is an `HttpOnly` cookie signed
+with a key that only lives in memory, so restarting the server locks every
+browser. Hiding works while locked, but unhiding needs an unlock. The flag lives
+in SQLite, so files stay where they are, and it follows a file that's moved
+or renamed. After five wrong passphrases in a row, each further attempt
+waits, and the wait doubles each time.
+
+Thumbnails of visible items are cached by the browser for a long time. A hidden
+item's thumbnail URL is different, and its media is only cacheable until the
+unlock that loaded it expires. So after relocking, the browser has nothing
+left to show it from. This protects against someone browsing the gallery, not
+against someone with access to the files on disk.
 
 ### Training captions
 

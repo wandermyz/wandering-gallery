@@ -25,6 +25,8 @@ export interface ViewerProps {
   onFavorite: (a: Asset) => void;
   onRate: (a: Asset, rating: number) => void;
   onDelete: (a: Asset) => void;
+  /** Null when hiding is not set up. */
+  onHide: ((a: Asset) => void) | null;
   onShare: (a: Asset) => void;
   /** The asset changed (e.g. its tags were edited in the details panel). */
   onAssetChange: (a: Asset) => void;
@@ -479,6 +481,14 @@ export function Viewer(props: ViewerProps) {
           <Stars value={asset.rating} onChange={(r) => props.onRate(asset, r)} size={26} />
           <IconButton icon="share" label="Share or save original" onClick={() => props.onShare(asset)} />
           <IconButton icon="info" label="Details and metadata" active={info} onClick={() => setInfo((v) => !v)} />
+          {props.onHide && (
+            <IconButton
+              icon={asset.hidden ? 'eye' : 'eye-off'}
+              label={asset.hidden ? 'Unhide' : 'Hide'}
+              active={asset.hidden}
+              onClick={() => props.onHide!(asset)}
+            />
+          )}
           <IconButton
             icon="trash"
             label={writable ? 'Move to trash' : 'Library is read-only'}

@@ -35,6 +35,8 @@ export interface Asset {
   indexError: string | null;
   favorite: boolean;
   rating: number;
+  /** Left out of lists, and refused by the server, unless this browser is unlocked. */
+  hidden: boolean;
   status: 'ready' | 'missing' | 'trashed';
   trashedAtMs: number | null;
   /** Caption sidecar status ('unknown' for an unreadable json), null when there is no caption. */
@@ -149,13 +151,28 @@ export class ApiError extends Error {
   }
 }
 
+export interface Session {
+  csrf: string;
+  /** A passphrase is configured, so assets can be hidden and unlocked. */
+  hiddenEnabled: boolean;
+  /** How long an unlock lasts. */
+  unlockMinutes: number;
+  /** Time left on this browser's unlock (0: locked). */
+  unlockedForMs: number;
+}
+
 let csrf: string | null = null;
 
-async function session(): Promise<string> {
-  if (csrf) return csrf;
+export async function fetchSession(): Promise<Session> {
   const r = await fetch('/api/session', { cache: 'no-store' });
-  csrf = ((await r.json()) as { csrf: string }).csrf;
-  return csrf;
+  if (!r.ok) throw new ApiError(`${r.status} ${r.statusText}`, r.status);
+  const s = (await r.json()) as Session;
+  csrf = s.csrf;
+  return s;
+}
+
+async function session(): Promise<string> {
+  return csrf ?? (await fetchSession()).csrf;
 }
 
 export async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
@@ -227,6 +244,9 @@ export const api = {
   setTags: (id: number, change: { add?: string[]; remove?: string[] }) => request<Asset>('POST', `/api/assets/${id}/tags`, change),
   renameTag: (id: number, name: string) => request<{ id: number; name: string; merged: boolean }>('POST', `/api/tags/${id}/rename`, { name }),
   deleteTag: (id: number) => request<{ ok: true }>('POST', `/api/tags/${id}/delete`),
+  hide: (id: number, hidden: boolean) => request<Asset>('POST', `/api/assets/${id}/hidden`, { hidden }),
+  unlock: (passphrase: string) => request<Session>('POST', '/api/unlock', { passphrase }),
+  lock: () => request<Session>('POST', '/api/lock'),
   trash: (a: Asset) => request<Asset>('POST', `/api/assets/${a.id}/trash`, { size: a.size, mtimeMs: a.mtimeMs }),
   trashList: () => request<{ retentionDays: number; items: Asset[] }>('GET', '/api/trash'),
   restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),

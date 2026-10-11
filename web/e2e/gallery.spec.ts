@@ -217,6 +217,53 @@ test('favorite and rating persist across reloads and show in the grid', async ({
   await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
 });
 
+test('hidden items leave the grid until unlocked with the passphrase', async ({ page, request }) => {
+  await openGallery(page);
+  await openAsset(page, 'gen_00004_.png');
+  const src = await page.locator('.slide.active img').first().getAttribute('src');
+  await page.getByRole('button', { name: 'Hide', exact: true }).click();
+  // Hidden while locked: the viewer moves on and the item leaves the grid.
+  await expect(page.locator('.viewer-name')).not.toHaveText('gen_00004_.png');
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await expect(page.locator('.cell[aria-label="gen_00004_.png"]')).toHaveCount(0);
+  const id = Number(/assets\/(\d+)\//.exec(src!)![1]);
+  expect((await request.get(`/api/assets/${id}/file`)).status()).toBe(404);
+
+  await page.reload();
+  await expect(page.locator('.cell').first()).toBeVisible();
+  expect(await (await findCell(page, 'gen_00005_.png')).count()).toBe(1);
+  await expect(page.locator('.cell[aria-label="gen_00004_.png"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Show hidden items' }).click();
+  await page.getByLabel('Passphrase').fill('wrong');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Wrong passphrase');
+  await page.getByLabel('Passphrase').fill('e2e passphrase');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  const cell = await findCell(page, 'gen_00004_.png');
+  await expect(cell.locator('.badge-hidden')).toBeVisible();
+  await expect(cell.locator('img')).toHaveJSProperty('complete', true);
+  expect(await cell.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+
+  // The countdown, and locking again by hand.
+  await page.getByRole('button', { name: 'Hidden items are shown' }).click();
+  await expect(page.locator('.unlock-timer')).toHaveText(/^1[45]:\d\d$/);
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(page.locator('.cell[aria-label="gen_00004_.png"]')).toHaveCount(0);
+
+  // Unhide (needs the unlock again).
+  await page.getByRole('button', { name: 'Show hidden items' }).click();
+  await page.getByLabel('Passphrase').fill('e2e passphrase');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await openAsset(page, 'gen_00004_.png');
+  await page.getByRole('button', { name: 'Unhide' }).click();
+  await expect(page.getByRole('button', { name: 'Hide', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await page.getByRole('button', { name: 'Hidden items are shown' }).click();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(await findCell(page, 'gen_00004_.png')).toHaveCount(1);
+});
+
 test('ComfyUI metadata panel shows parameters, prompts and raw JSON', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');

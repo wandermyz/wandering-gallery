@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import { isPassphraseHash } from './unlock.js';
 
 export interface LibraryConfig {
   id: string;
@@ -46,6 +47,12 @@ export interface AppConfig {
     ffprobe: string;
   };
   generate: GenerateConfig;
+  hidden: {
+    /** scrypt hash of the passphrase that unlocks hidden assets (`npm run hash-passphrase`), or null. */
+    passphraseHash: string | null;
+    /** How long an unlock lasts. */
+    unlockMinutes: number;
+  };
 }
 
 export interface GenerateConfig {
@@ -119,6 +126,12 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   const thumbs = asObject(root.thumbnails, 'thumbnails');
   const tools = asObject(root.tools, 'tools');
   const generate = asObject(root.generate, 'generate');
+  const hidden = asObject(root.hidden, 'hidden');
+  let passphraseHash: string | null = null;
+  if (hidden.passphraseHash !== undefined && hidden.passphraseHash !== null) {
+    passphraseHash = str(hidden.passphraseHash, 'hidden.passphraseHash');
+    if (!isPassphraseHash(passphraseHash)) throw new ConfigError('hidden.passphraseHash must be the output of `npm run hash-passphrase`');
+  }
 
   if (!Array.isArray(root.libraries) || root.libraries.length === 0) {
     throw new ConfigError('libraries must be a non-empty list');
@@ -192,6 +205,10 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       outputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
       promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),
+    },
+    hidden: {
+      passphraseHash,
+      unlockMinutes: num(hidden.unlockMinutes, 'hidden.unlockMinutes', 15, 1, 1440),
     },
   };
 }

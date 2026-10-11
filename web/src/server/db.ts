@@ -29,6 +29,7 @@ export interface AssetRow {
   status: AssetStatus;
   favorite: number;
   rating: number;
+  hidden: number;
   first_seen_ms: number;
   missing_since_ms: number | null;
   trashed_at_ms: number | null;
@@ -73,9 +74,9 @@ export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.
     WHERE asset_tags.asset_id = assets.id ORDER BY tags.name COLLATE NOCASE)) AS tag_names
   FROM assets LEFT JOIN captions ON captions.asset_id = assets.id`;
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
-const MIGRATIONS: string[] = [
+const MIGRATIONS: (string | ((sql: DatabaseSync) => void))[] = [
   `
   CREATE TABLE assets (
     id INTEGER PRIMARY KEY,
@@ -165,6 +166,14 @@ const MIGRATIONS: string[] = [
   ) WITHOUT ROWID;
   CREATE INDEX asset_tags_tag ON asset_tags(tag_id, asset_id);
   `,
+  // Hidden assets: left out of every list unless the browser is unlocked.
+  // Before its rebase onto tags, the hidden-items branch shipped this as v4, so a
+  // v4 database may have the column but not the tags tables: repair either way.
+  (sql) => {
+    const cols = sql.prepare('PRAGMA table_info(assets)').all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'hidden')) sql.exec('ALTER TABLE assets ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+    if (!sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags'").get()) sql.exec(MIGRATIONS[3] as string);
+  },
 ];
 
 export class Db {
@@ -190,7 +199,9 @@ export class Db {
     }
     for (let v = current; v < MIGRATIONS.length; v++) {
       this.tx(() => {
-        this.sql.exec(MIGRATIONS[v]);
+        const m = MIGRATIONS[v];
+        if (typeof m === 'string') this.sql.exec(m);
+        else m(this.sql);
         this.sql.exec(`PRAGMA user_version = ${v + 1}`);
       });
     }
@@ -260,6 +271,10 @@ export class Db {
 
   setFavorite(id: number, favorite: boolean) {
     this.run('UPDATE assets SET favorite = ? WHERE id = ?', favorite ? 1 : 0, id);
+  }
+
+  setHidden(id: number, hidden: boolean) {
+    this.run('UPDATE assets SET hidden = ? WHERE id = ?', hidden ? 1 : 0, id);
   }
 
   setRating(id: number, rating: number) {

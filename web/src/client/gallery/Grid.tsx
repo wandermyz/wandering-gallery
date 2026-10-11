@@ -193,6 +193,11 @@ function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: 
         </span>
       )}
       <MiniRating value={a.rating} />
+      {a.hidden && (
+        <span class="badge-hidden" aria-label="Hidden">
+          <Icon name="eye-off" size={13} />
+        </span>
+      )}
       {a.caption && (
         <span class={cx('badge-cap', `cap-${a.caption}`, a.captionCandidate && 'cand')} title={`Caption: ${CAPTION_LABELS[a.caption] ?? a.caption}${a.captionCandidate ? ' (candidate available)' : ''}`} />
       )}

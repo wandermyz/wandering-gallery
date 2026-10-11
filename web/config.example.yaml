@@ -47,6 +47,11 @@ trash:
 #   outputLibrary: comfyui           # library that holds ComfyUI's output folder
 #   promptsDir: ~/.config/wandering-gallery/prompts   # local prompt texts, never in git
 
+# Hidden items (eye button in the viewer). Without a passphrase, hiding is off.
+# hidden:
+#   passphraseHash: scrypt:...   # output of `npm run hash-passphrase`
+#   unlockMinutes: 15            # how long an unlock lasts in a browser
+
 thumbnails:
   size: 360
   quality: 78
