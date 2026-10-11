@@ -13,6 +13,8 @@ export interface TagInfo {
   count: number;
   /** Newest live asset with this tag, for a cover thumbnail. */
   cover: { id: number; v: string } | null;
+  /** Only listed while unlocked. */
+  hidden: boolean;
 }
 
 export const TAG_MAX = 64;
@@ -38,12 +40,12 @@ export class Tags {
 
   /**
    * `countable` and `coverable` are SQL conditions on `assets` (for hidden items: what
-   * this browser may count, and what may be a cover).
+   * this browser may count, and what may be a cover). Hidden tags only with `withHidden`.
    */
-  list(countable = '1', coverable = '1'): TagInfo[] {
+  list(countable = '1', coverable = '1', withHidden = true): TagInfo[] {
     const cover = (alias: string) => coverable.replaceAll('assets.', `${alias}.`);
-    const rows = this.db.all<{ id: number; name: string; n: number; cover_id: number | null; cover_fp: string | null }>(
-      `SELECT tags.id, tags.name, count(a.id) AS n,
+    const rows = this.db.all<{ id: number; name: string; hidden: number; n: number; cover_id: number | null; cover_fp: string | null }>(
+      `SELECT tags.id, tags.name, tags.hidden, count(a.id) AS n,
          (SELECT c.id FROM asset_tags ct JOIN assets c ON c.id = ct.asset_id
           WHERE ct.tag_id = tags.id AND c.status = 'ready' AND ${cover('c')} ORDER BY c.mtime_ms DESC, c.id DESC LIMIT 1) AS cover_id,
          (SELECT c.fingerprint FROM asset_tags ct JOIN assets c ON c.id = ct.asset_id
@@ -51,6 +53,7 @@ export class Tags {
        FROM tags
        LEFT JOIN asset_tags at ON at.tag_id = tags.id
        LEFT JOIN assets a ON a.id = at.asset_id AND a.status = 'ready' AND ${countable.replaceAll('assets.', 'a.')}
+       ${withHidden ? '' : 'WHERE tags.hidden = 0'}
        GROUP BY tags.id
        ORDER BY tags.name COLLATE NOCASE`,
     );
@@ -59,7 +62,22 @@ export class Tags {
       name: r.name,
       count: r.n,
       cover: r.cover_id && r.cover_fp ? { id: r.cover_id, v: r.cover_fp.slice(0, 12) } : null,
+      hidden: !!r.hidden,
     }));
+  }
+
+  /** Lower-cased names of hidden tags, to strip from assets shown to a locked browser. */
+  hiddenNames(): Set<string> {
+    return new Set(this.db.all<{ name: string }>('SELECT name FROM tags WHERE hidden = 1').map((r) => r.name.toLowerCase()));
+  }
+
+  isHidden(id: number): boolean {
+    return !!this.db.get<{ hidden: number }>('SELECT hidden FROM tags WHERE id = ?', id)?.hidden;
+  }
+
+  setHidden(id: number, hidden: boolean) {
+    const r = this.db.run('UPDATE tags SET hidden = ? WHERE id = ?', hidden ? 1 : 0, id);
+    if (!r.changes) throw new HttpError('tag not found', 404);
   }
 
   /** Adds and removes tags on one asset; unknown names in `add` create new tags. */

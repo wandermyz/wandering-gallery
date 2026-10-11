@@ -180,8 +180,12 @@ export function TagEditor({ asset: a, onChange, onOpenTag, focusKey }: {
 }
 
 /** All tags with a cover and a count; opens one, or renames / deletes it. */
-export function TagsView({ onOpen, toast, ask }: {
+export function TagsView({ onOpen, toast, ask, hiding, unlocked, onUnlock }: {
   onOpen: (name: string) => void;
+  /** Hiding is set up (a passphrase is configured). */
+  hiding: boolean;
+  unlocked: boolean;
+  onUnlock: () => void;
   toast: (t: string, o?: Partial<ToastMsg>) => void;
   ask: (o: ConfirmOptions) => Promise<boolean>;
 }) {
@@ -209,6 +213,17 @@ export function TagsView({ onOpen, toast, ask }: {
     try {
       const r = await api.renameTag(tag.id, name);
       toast(r.merged ? `Merged into “${r.name}”` : `Renamed to “${r.name}”`);
+    } catch (e) {
+      toast((e as Error).message, { kind: 'error' });
+    }
+    void loadTags().catch(() => {});
+  };
+
+  const toggleHidden = async (t: Tag) => {
+    if (t.hidden && !unlocked) return onUnlock();
+    try {
+      await api.hideTag(t.id, !t.hidden);
+      toast(t.hidden ? `“${t.name}” is no longer hidden` : `Hid “${t.name}”`);
     } catch (e) {
       toast((e as Error).message, { kind: 'error' });
     }
@@ -271,10 +286,19 @@ export function TagsView({ onOpen, toast, ask }: {
                   <>
                     <button type="button" class="tags-open" onClick={() => onOpen(t.name)}>
                       {t.cover ? <img src={thumbUrl(t.cover)} alt="" loading="lazy" /> : <span class="folder-ph"><Icon name="tag" size={20} /></span>}
-                      <span class="tags-name">{t.name}</span>
+                      <span class="tags-name">
+                        {t.name}
+                        {t.hidden && <span class="lib-ro" title="Hidden tag"><Icon name="eye-off" size={12} /></span>}
+                      </span>
                       <span class="lib-count">{t.count}</span>
                     </button>
                     <button type="button" class="chip-btn" onClick={() => setEditing({ id: t.id, name: t.name })}>Rename</button>
+                    {hiding && (
+                      <button type="button" class="chip-btn" aria-label={`${t.hidden ? 'Unhide' : 'Hide'} tag ${t.name}`}
+                        title={t.hidden ? 'Unhide' : 'Hide'} onClick={() => void toggleHidden(t)}>
+                        <Icon name={t.hidden ? 'eye' : 'eye-off'} size={15} />
+                      </button>
+                    )}
                     <button type="button" class="chip-btn btn-danger-ghost" aria-label={`Delete tag ${t.name}`} onClick={() => void remove(t)}>
                       <Icon name="trash" size={15} />
                     </button>

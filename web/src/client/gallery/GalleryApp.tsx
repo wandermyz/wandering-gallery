@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, ApiError, fetchSession, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query, type Session } from './api';
 import { Grid, type Density } from './Grid';
-import { TagsView } from './Tags';
+import { loadTags, TagsView } from './Tags';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
 import { CAPTION_EVENT, cx, formatBytes, formatDate } from '../common/util';
@@ -268,9 +268,15 @@ export default function GalleryApp() {
       const open = list.items.find((a) => a.id === route.asset);
       if (open && (open.hidden || open.libraryHidden)) closeViewer();
     }
+    // A hidden tag's view cannot stay either; the server finds nothing for it while locked.
     void list.reload(true);
     void loadLibraries();
     void loadStatus();
+    void loadTags().then((all) => {
+      if (!unlocked && route.tag && !all.some((t) => t.name.toLowerCase() === route.tag.toLowerCase())) {
+        nav({ view: 'tags', tag: '', asset: null }, 'replace');
+      }
+    }, () => {});
     setFolderRev((n) => n + 1);
   }, [unlocked]);
 
@@ -618,7 +624,7 @@ export default function GalleryApp() {
 
       <main class="content">
         {route.view === 'tags' ? (
-          <TagsView onOpen={openTag} toast={toast} ask={ask} />
+          <TagsView onOpen={openTag} toast={toast} ask={ask} hiding={hiddenEnabled} unlocked={unlocked} onUnlock={() => setUnlockSheet(true)} />
         ) : route.view === 'trash' ? (
           <TrashView toast={toast} ask={ask} onChange={() => {
             void loadStatus();

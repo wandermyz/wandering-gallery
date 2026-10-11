@@ -19,6 +19,12 @@ refused by the API, until the browser is unlocked with a passphrase. An unlock l
   answered with 404 (assets, folders, rescan), and all its assets count as hidden.
   Live-update events don't name it. A hidden library needs a passphrase in the
   config, or the config is rejected. Its assets carry `libraryHidden: true`.
+- **Tags can be hidden** (eye button in *Tags*; `tags.hidden`, schema v6). While
+  locked, a hidden tag is left out of `/api/tags` (the tag list and the tagging
+  suggestions), stripped from assets' `tags`, matches nothing in `?tag=`, and its
+  id answers 404 (rename, delete, unhide). It only hides the tag, not its items.
+  Typing a hidden tag's exact name while locked still attaches it (the tag
+  stays hidden).
 - **Mixed into the normal grid when unlocked**, with a small eye badge.
 - **Hide any time, unhide only when unlocked.** A locked browser can't even see the
   item.
@@ -85,5 +91,4 @@ Assets carry `hidden: boolean`.
 
 ## Not covered
 
-Access to the files on disk (they aren't encrypted). Tag names stay visible while
-locked (only the counts change).
+Access to the files on disk (they aren't encrypted).

@@ -197,6 +197,32 @@ describe('hidden assets', () => {
     expect((await post(`/api/assets/${secret}/tags`, { add: ['y'] })).statusCode).toBe(404);
   });
 
+  it('hides tags from the tag list, asset tag lists and tag views while locked', async () => {
+    const { pub } = await setup();
+    await post(`/api/assets/${pub}/tags`, { add: ['open', 'Secret'] });
+    const tagId = (name: string) => (env.db.get<{ id: number }>('SELECT id FROM tags WHERE name = ?', name))!.id;
+    const secret = tagId('Secret');
+    // Hiding works while locked.
+    expect((await post(`/api/tags/${secret}/hidden`, { hidden: true })).statusCode).toBe(200);
+
+    const tagNames = async (cookie?: string) => (await get('/api/tags', cookie)).json().tags.map((t: { name: string }) => t.name);
+    expect(await tagNames()).toEqual(['open']);
+    expect((await get(`/api/assets/${pub}`)).json().tags).toEqual(['open']);
+    expect((await get('/api/assets')).json().items.find((a: { id: number }) => a.id === pub).tags).toEqual(['open']);
+    expect((await get('/api/assets?tag=secret')).json().total).toBe(0);
+    for (const action of ['hidden', 'rename', 'delete']) {
+      expect((await post(`/api/tags/${secret}/${action}`, { hidden: false, name: 'x' })).statusCode, action).toBe(404);
+    }
+
+    const cookie = await unlockCookie();
+    expect(await tagNames(cookie)).toEqual(['open', 'Secret']);
+    expect((await get('/api/tags', cookie)).json().tags[1]).toMatchObject({ name: 'Secret', hidden: true, count: 1 });
+    expect((await get(`/api/assets/${pub}`, cookie)).json().tags).toEqual(['open', 'Secret']);
+    expect(await names('/api/assets?tag=secret', cookie)).toEqual(['public.png']);
+    expect((await post(`/api/tags/${secret}/hidden`, { hidden: false }, cookie)).statusCode).toBe(200);
+    expect(await tagNames()).toEqual(['open', 'Secret']);
+  });
+
   it('upgrades a database from the pre-rebase hidden-items v4', () => {
     const file = path.join(tmpDir(), 'old.db');
     const old = new Db(file);
@@ -205,7 +231,7 @@ describe('hidden assets', () => {
     old.run("INSERT INTO assets (library_id, rel_path, folder, name, kind, size, mtime_ms, fingerprint, first_seen_ms, hidden) VALUES ('m', 'a.png', '', 'a.png', 'image', 1, 1, 'f', 1, 1)");
     old.close();
     const db = new Db(file);
-    expect(db.get<{ user_version: number }>('PRAGMA user_version')!.user_version).toBe(5);
+    expect(db.get<{ user_version: number }>('PRAGMA user_version')!.user_version).toBe(6);
     expect(db.get<{ hidden: number }>('SELECT hidden FROM assets')!.hidden).toBe(1);
     expect(db.all('SELECT * FROM tags')).toEqual([]);
     db.close();

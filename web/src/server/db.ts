@@ -74,7 +74,7 @@ export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.
     WHERE asset_tags.asset_id = assets.id ORDER BY tags.name COLLATE NOCASE)) AS tag_names
   FROM assets LEFT JOIN captions ON captions.asset_id = assets.id`;
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const MIGRATIONS: (string | ((sql: DatabaseSync) => void))[] = [
   `
@@ -174,6 +174,10 @@ const MIGRATIONS: (string | ((sql: DatabaseSync) => void))[] = [
     if (!cols.some((c) => c.name === 'hidden')) sql.exec('ALTER TABLE assets ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
     if (!sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags'").get()) sql.exec(MIGRATIONS[3] as string);
   },
+  // Hidden tags: left out of the tag list and suggestions unless the browser is unlocked.
+  `
+  ALTER TABLE tags ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export class Db {

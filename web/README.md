@@ -218,6 +218,11 @@ no button for this). While locked, it's missing from the library list, its items
 are hidden everywhere, and its id answers `404`. Once unlocked, it shows like any
 other library.
 
+Tags can be hidden too, with the eye button next to a tag in *Tags*. While
+locked, a hidden tag is missing from the tag list and from the suggestions when
+tagging, isn't shown on items, and its tag view is empty. Its items stay
+visible, unless they're hidden themselves.
+
 The 🔒 button in the top bar then asks for the passphrase. Unlocking shows hidden
 items, with a small eye badge, mixed into the normal grid in that browser for
 15 minutes. It's a fixed time from unlocking, and the button shows the

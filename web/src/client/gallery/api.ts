@@ -63,6 +63,8 @@ export interface Tag {
   /** Live assets with this tag. */
   count: number;
   cover: { id: number; v: string } | null;
+  /** Only listed while unlocked. */
+  hidden: boolean;
 }
 
 export interface Folder {
@@ -247,6 +249,7 @@ export const api = {
   /** Unknown names in `add` create new tags. */
   setTags: (id: number, change: { add?: string[]; remove?: string[] }) => request<Asset>('POST', `/api/assets/${id}/tags`, change),
   renameTag: (id: number, name: string) => request<{ id: number; name: string; merged: boolean }>('POST', `/api/tags/${id}/rename`, { name }),
+  hideTag: (id: number, hidden: boolean) => request<{ ok: true }>('POST', `/api/tags/${id}/hidden`, { hidden }),
   deleteTag: (id: number) => request<{ ok: true }>('POST', `/api/tags/${id}/delete`),
   hide: (id: number, hidden: boolean) => request<Asset>('POST', `/api/assets/${id}/hidden`, { hidden }),
   unlock: (passphrase: string) => request<Session>('POST', '/api/unlock', { passphrase }),

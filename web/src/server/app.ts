@@ -152,7 +152,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // unlock.ts). Hidden libraries are also left out of the library list.
   const unlock = new Unlock(cfg.hidden.passphraseHash, cfg.hidden.unlockMinutes * 60_000);
   const hiddenLibs: ReadonlySet<string> = new Set(cfg.libraries.filter((l) => l.hidden).map((l) => l.id));
-  const toJson = (r: AssetRow) => assetJson(r, hiddenLibs);
+  const toJson = (req: FastifyRequest, r: AssetRow) => {
+    const json = assetJson(r, hiddenLibs);
+    if (!json.tags.length || unlock.isUnlocked(req)) return json;
+    const hiddenTags = tags.hiddenNames();
+    return hiddenTags.size ? { ...json, tags: json.tags.filter((t) => !hiddenTags.has(t.toLowerCase())) } : json;
+  };
   const isHidden = (r: Pick<AssetRow, 'hidden' | 'library_id'>) => !!r.hidden || hiddenLibs.has(r.library_id);
   // Library ids are config-validated ([a-z0-9_-]), so they are safe to inline.
   const notHidden = hiddenLibs.size
@@ -321,7 +326,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       params.push(...ids);
     }
     if (q.tag) {
-      where.push('EXISTS (SELECT 1 FROM asset_tags JOIN tags ON tags.id = asset_tags.tag_id WHERE asset_tags.asset_id = assets.id AND tags.name = ?)');
+      // A hidden tag matches nothing while locked, like a tag that does not exist.
+      const tagHidden = unlock.isUnlocked(req) ? '' : ' AND tags.hidden = 0';
+      where.push(`EXISTS (SELECT 1 FROM asset_tags JOIN tags ON tags.id = asset_tags.tag_id WHERE asset_tags.asset_id = assets.id AND tags.name = ?${tagHidden})`);
       params.push(checkTagName(q.tag));
     }
     if (q.favorite === '1') where.push('favorite = 1');
@@ -366,7 +373,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       )!.n;
     }
     return {
-      items: page.map(toJson),
+      items: page.map((r) => toJson(req, r)),
       next: more && last ? `${last.mtime_ms}_${last.id}` : null,
       total,
     };
@@ -375,7 +382,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/api/assets/:id', async (req) => {
     const row = getAsset(req, ['ready', 'trashed']);
     const lib = indexer.libs.get(row.library_id);
-    return { ...toJson(row), libraryName: lib?.cfg.name ?? row.library_id, writable: !!lib?.cfg.writable };
+    return { ...toJson(req, row), libraryName: lib?.cfg.name ?? row.library_id, writable: !!lib?.cfg.writable };
   });
 
   app.get('/api/assets/:id/metadata', async (req) => {
@@ -493,7 +500,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { favorite?: unknown };
     if (typeof body.favorite !== 'boolean') throw new HttpError('favorite must be true or false', 400);
     db.setFavorite(row.id, body.favorite);
-    return toJson(db.asset(row.id)!);
+    return toJson(req, db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/rating', async (req) => {
@@ -501,29 +508,44 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { rating?: unknown };
     const rating = intParam(body.rating, 'rating', 0, 5);
     db.setRating(row.id, rating);
-    return toJson(db.asset(row.id)!);
+    return toJson(req, db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/tags', async (req) => {
     const row = getAsset(req, ['ready']);
     tags.update(row.id, (req.body ?? {}) as { add?: unknown; remove?: unknown });
-    return toJson(db.asset(row.id)!);
+    return toJson(req, db.asset(row.id)!);
   });
 
   app.get('/api/tags', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
     // Covers are never hidden items, as for folders.
-    return { tags: tags.list(visible(req), notHidden) };
+    return { tags: tags.list(visible(req), notHidden, unlock.isUnlocked(req)) };
   });
 
-  app.post('/api/tags/:id/rename', async (req) => {
+  /** A tag id this request may see: hidden tags are unknown while locked. */
+  const visibleTag = (req: FastifyRequest) => {
     const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
+    if (tags.isHidden(id) && !unlock.isUnlocked(req)) throw new HttpError('tag not found', 404);
+    return id;
+  };
+
+  app.post('/api/tags/:id/rename', async (req) => {
+    const id = visibleTag(req);
     return tags.rename(id, ((req.body ?? {}) as { name?: unknown }).name);
   });
 
   app.post('/api/tags/:id/delete', async (req) => {
-    const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
-    tags.delete(id);
+    tags.delete(visibleTag(req));
+    return { ok: true };
+  });
+
+  // As for assets: hiding works while locked, unhiding needs an unlock.
+  app.post('/api/tags/:id/hidden', async (req) => {
+    const id = visibleTag(req);
+    const body = (req.body ?? {}) as { hidden?: unknown };
+    if (typeof body.hidden !== 'boolean') throw new HttpError('hidden must be true or false', 400);
+    tags.setHidden(id, body.hidden);
     return { ok: true };
   });
 
@@ -533,7 +555,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { hidden?: unknown };
     if (typeof body.hidden !== 'boolean') throw new HttpError('hidden must be true or false', 400);
     db.setHidden(row.id, body.hidden);
-    return toJson(db.asset(row.id)!);
+    return toJson(req, db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/trash', async (req) => {
@@ -543,7 +565,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       size: typeof body.size === 'number' ? body.size : undefined,
       mtimeMs: typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined,
     };
-    return toJson(await trash.trash(id, expected));
+    return toJson(req, await trash.trash(id, expected));
   });
 
   app.get('/api/trash', async (req) => {
@@ -551,7 +573,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return {
       retentionDays: cfg.trash.retentionDays,
       items: rows.map((r) => ({
-        ...toJson(r),
+        ...toJson(req, r),
         libraryName: indexer.libs.get(r.library_id)?.cfg.name ?? r.library_id,
         expiresAtMs: (r.trashed_at_ms ?? 0) + cfg.trash.retentionDays * 86_400_000,
       })),
@@ -560,7 +582,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post('/api/trash/:id/restore', async (req) => {
     const id = visibleId(req);
-    return toJson(await trash.restore(id));
+    return toJson(req, await trash.restore(id));
   });
 
   app.post('/api/trash/:id/purge', async (req) => {
