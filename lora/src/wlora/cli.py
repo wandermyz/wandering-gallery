@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("run")
     p.add_argument("--epochs", help="comma-separated epochs (default: all checkpoints)")
     p.add_argument("--strengths", help="comma-separated LoRA strengths (default: train.eval.strengths)")
+    p.add_argument("--seeds", help="comma-separated seeds (default: train.eval.seeds)")
     p.add_argument("-n", "--dry-run", action="store_true")
 
     p = sub.add_parser("compare", help="run several models on sample images -> HTML report")
@@ -118,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "eval":
         from .evaluate import evaluate
         return evaluate(ds, a.run, [int(x) for x in a.epochs.split(",")] if a.epochs else None,
-                        [float(x) for x in a.strengths.split(",")] if a.strengths else None, a.dry_run)
+                        [float(x) for x in a.strengths.split(",")] if a.strengths else None, a.dry_run,
+                        [int(x) for x in a.seeds.split(",")] if a.seeds else None)
     elif a.cmd == "prompt":
         from .prompt import build_prompt
         print(build_prompt(ds))

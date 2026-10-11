@@ -109,8 +109,9 @@ def with_tags_after_class(prompt: str, ds: Dataset, extra: list[str]) -> str:
 
 
 def plan_jobs(ds: Dataset, run: str, ckpts: list[tuple[int, Path]], strengths: list[float],
-              eye_tags: list[str] = ()) -> list[dict]:
+              eye_tags: list[str] = (), seeds: list[int] | None = None) -> list[dict]:
     ev = ds.cfg["train"]["eval"]
+    seeds = seeds or ev["seeds"]
     jobs = []
     for p in ev["prompts"]:
         prompt = with_tags_after_class(p["prompt"], ds, list(eye_tags))
@@ -119,7 +120,7 @@ def plan_jobs(ds: Dataset, run: str, ckpts: list[tuple[int, Path]], strengths: l
             # Same scene without the trigger word: measures leakage into normal prompts.
             texts["n"] = re.sub(r"\s*\{trigger\}\s*,?\s*", "", prompt).strip(", ")
         for variant, text in texts.items():
-            for seed in ev["seeds"]:
+            for seed in seeds:
                 base = {"prompt_id": p["id"], "variant": variant, "seed": seed, "text": text}
                 jobs.append(base | {"epoch": 0, "strength": 0.0, "lora": None,
                                     "key": f"{p['id']}-{variant}-{seed}-base"})
@@ -131,7 +132,7 @@ def plan_jobs(ds: Dataset, run: str, ckpts: list[tuple[int, Path]], strengths: l
 
 
 def evaluate(ds: Dataset, run: str, epochs: list[int] | None, strengths: list[float] | None,
-             dry_run: bool) -> int:
+             dry_run: bool, seeds: list[int] | None = None) -> int:
     tcfg, ev = ds.cfg["train"], ds.cfg["train"]["eval"]
     run_dir = ds.train_dir / "runs" / run
     if not (run_dir / "params.json").exists():
@@ -146,7 +147,7 @@ def evaluate(ds: Dataset, run: str, epochs: list[int] | None, strengths: list[fl
     link = loras_root / "wlora" / ds.root.name / run
 
     params = json.loads((run_dir / "params.json").read_text())["params"]
-    jobs = plan_jobs(ds, run, ckpts, strengths, params.get("eye_tags") or [])
+    jobs = plan_jobs(ds, run, ckpts, strengths, params.get("eye_tags") or [], seeds)
     eval_dir = run_dir / "eval"
     manifest_path = eval_dir / "manifest.json"
     done: dict[str, dict] = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
@@ -190,6 +191,10 @@ def evaluate(ds: Dataset, run: str, epochs: list[int] | None, strengths: list[fl
         print(f"  [{i}/{len(todo)}] {j['key']}  ({el / i:.1f}s/img, ~{el / i * (len(todo) - i) / 60:.0f} min left)",
               flush=True)
 
+    if epochs or seeds or strengths != ev["strengths"]:
+        # A subset: don't replace the run's full contact sheets with partial ones.
+        print(f"done: {len(jobs)} images (subset; contact sheets not rewritten)")
+        return 0
     sheets = contact_sheets(ds, run, jobs, done, out_root, [e for e, _ in ckpts], strengths)
     print(f"done: {len(jobs)} images; contact sheets in {out_root / f'wlora/{ds.root.name}/{run}/sheets'}")
     for s in sheets:
