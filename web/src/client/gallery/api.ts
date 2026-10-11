@@ -169,7 +169,7 @@ async function session(): Promise<string> {
   return csrf;
 }
 
-async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
+export async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
   const headers: Record<string, string> = {};
   if (method !== 'GET') {
     headers['X-CSRF-Token'] = await session();

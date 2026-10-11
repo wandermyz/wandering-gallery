@@ -46,9 +46,10 @@ test('sections switch from the rail or the drawer and keep the gallery view', as
     expect(bar!.x).toBeGreaterThanOrEqual(rail!.x + rail!.width);
   }
 
+  // Generate opens its (single) flow.
   await goSection(page, 'Generate', mobile);
-  await expect(page).toHaveURL(/\/generate$/);
-  await expect(page.locator('.topbar h1')).toHaveText('Generate');
+  await expect(page).toHaveURL(/\/generate\/wai-illustrious-tags$/);
+  await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · prompt to tags');
   await noHorizontalScroll(page);
 
   await goSection(page, 'Train', mobile);
@@ -64,7 +65,7 @@ test('sections switch from the rail or the drawer and keep the gallery view', as
   await page.goBack();
   await expect(page.locator('.topbar h1')).toHaveText('Train');
   await page.goBack();
-  await expect(page.locator('.topbar h1')).toHaveText('Generate');
+  await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · prompt to tags');
   await page.goBack();
   await expect(page.locator('.topbar h1')).toHaveText('Test Library');
   await expect(page.locator('.cell')).toHaveCount(2);

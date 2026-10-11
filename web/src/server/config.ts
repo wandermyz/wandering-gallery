@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 
 export interface LibraryConfig {
@@ -50,9 +51,26 @@ export interface AppConfig {
     ffmpeg: string;
     ffprobe: string;
   };
+  generate: GenerateConfig;
+}
+
+export interface GenerateConfig {
+  /** Base URL of the ComfyUI server. */
+  comfyui: string;
+  /** comfy-cli executable. */
+  comfyCli: string;
+  /** Library that holds ComfyUI's output folder (to show results), or null. */
+  outputLibrary: string | null;
+  /** Workflow templates (API + UI JSON); defaults to the repo's comfyui/workflows. */
+  workflowsDir: string;
+  /** Local prompt files (never in git), one `<flow>.yaml` per flow. */
+  promptsDir: string;
 }
 
 export class ConfigError extends Error {}
+
+// Same depth from src/server and dist/server: <repo>/comfyui/workflows.
+const REPO_WORKFLOWS = fileURLToPath(new URL('../../../comfyui/workflows', import.meta.url));
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
@@ -107,6 +125,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   const thumbs = asObject(root.thumbnails, 'thumbnails');
   const tools = asObject(root.tools, 'tools');
   const datasets = asObject(root.datasets, 'datasets');
+  const generate = asObject(root.generate, 'generate');
   const subfolder = datasets.subfolder === '' ? '' : str(datasets.subfolder, 'datasets.subfolder', 'images');
   if (subfolder && !/^[^/\\.][^/\\]*$/.test(subfolder)) throw new ConfigError('datasets.subfolder must be a single folder name');
 
@@ -137,6 +156,17 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     throw new ConfigError('server.allowedHosts must be a list of hostnames');
   }
 
+  const comfyui = str(generate.comfyui, 'generate.comfyui', 'http://127.0.0.1:8188').replace(/\/+$/, '');
+  if (!/^https?:\/\/[^/]+$/.test(comfyui)) throw new ConfigError('generate.comfyui must be an http(s) URL like http://127.0.0.1:8188');
+  let outputLibrary: string | null = null;
+  if (generate.outputLibrary !== undefined && generate.outputLibrary !== null) {
+    outputLibrary = str(generate.outputLibrary, 'generate.outputLibrary');
+    if (!seen.has(outputLibrary)) throw new ConfigError(`generate.outputLibrary "${outputLibrary}" is not a library id`);
+  } else if (seen.has('comfyui')) {
+    outputLibrary = 'comfyui';
+  }
+
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   const xdgData = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
   const xdgCache = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
 
@@ -168,6 +198,13 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     tools: {
       ffmpeg: str(tools.ffmpeg, 'tools.ffmpeg', 'ffmpeg'),
       ffprobe: str(tools.ffprobe, 'tools.ffprobe', 'ffprobe'),
+    },
+    generate: {
+      comfyui,
+      comfyCli: str(generate.comfyCli, 'generate.comfyCli', 'comfy-cli'),
+      outputLibrary,
+      workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
+      promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),
     },
   };
 }

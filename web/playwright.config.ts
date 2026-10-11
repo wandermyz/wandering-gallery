@@ -25,11 +25,20 @@ export default defineConfig({
     { name: 'iphone', use: iphone(devices['iPhone 15 Pro']) },
     { name: 'iphone-landscape', use: iphone(devices['iPhone 15 Pro landscape']) },
   ],
-  webServer: {
-    command: `node dist/server/main.js --config .tmp/e2e/config.yaml`,
-    url: `http://localhost:${PORT}/api/libraries`,
-    reuseExistingServer: false,
-    timeout: 30_000,
-    stdout: 'ignore',
-  },
+  webServer: [
+    {
+      command: `node dist/server/main.js --config .tmp/e2e/config.yaml`,
+      url: `http://localhost:${PORT}/api/libraries`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'ignore',
+    },
+    {
+      // Stand-in ComfyUI for the Generate page (driven through e2e/fake-comfy-cli.mjs).
+      command: 'node e2e/fake-comfy.mjs 2397 .tmp/e2e/comfy-out',
+      url: 'http://127.0.0.1:2397/system_stats',
+      reuseExistingServer: false,
+      timeout: 10_000,
+    },
+  ],
 });

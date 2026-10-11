@@ -47,6 +47,13 @@ datasets:
   root: ~/Datasets
   subfolder: images        # '' to put files directly in the dataset folder
 
+# Generate section (ComfyUI via comfy-cli). All optional; see the README.
+# generate:
+#   comfyui: http://127.0.0.1:8188   # ComfyUI server
+#   comfyCli: comfy-cli              # comfy-cli executable
+#   outputLibrary: comfyui           # library that holds ComfyUI's output folder
+#   promptsDir: ~/.config/wandering-gallery/prompts   # local prompt texts, never in git
+
 thumbnails:
   size: 360
   quality: 78

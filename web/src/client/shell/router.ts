@@ -54,3 +54,28 @@ export function goSection(id: SectionId) {
   window.scrollTo(0, 0);
   window.dispatchEvent(new Event(NAV_EVENT));
 }
+
+/** The current pathname, updated on back/forward and in-app navigation. */
+export function usePathname(): string {
+  const [p, setP] = useState(location.pathname);
+  useEffect(() => {
+    const on = () => setP(location.pathname);
+    window.addEventListener('popstate', on);
+    window.addEventListener(NAV_EVENT, on);
+    return () => {
+      window.removeEventListener('popstate', on);
+      window.removeEventListener(NAV_EVENT, on);
+    };
+  }, []);
+  return p;
+}
+
+/** In-app navigation to any URL, possibly in another section. */
+export function goTo(url: string, opts: { state?: unknown; replace?: boolean } = {}) {
+  const cur = currentSection();
+  const next = sectionOf(new URL(url, location.href).pathname);
+  if (next && next !== cur) lastUrl.set(cur, location.pathname + location.search);
+  history[opts.replace ? 'replaceState' : 'pushState'](opts.state ?? null, '', url);
+  if (!opts.replace) window.scrollTo(0, 0);
+  window.dispatchEvent(new Event(NAV_EVENT));
+}
