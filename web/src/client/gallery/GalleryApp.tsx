@@ -220,9 +220,14 @@ export default function GalleryApp() {
   /** When this browser's unlock ends (local clock), or null while locked. */
   const [unlockedUntil, setUnlockedUntil] = useState<number | null>(null);
   const [unlockSheet, setUnlockSheet] = useState(false);
+  /** Filename filter over the loaded items of the current view; null while the bar is closed. */
+  const [nameFilter, setNameFilter] = useState<string | null>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
 
   const q = useMemo(() => queryOf(route), [route.library, route.folder, route.tag, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
   const list = useAssets(q, route.view === 'gallery');
+  const needle = nameFilter?.trim().toLowerCase() ?? '';
+  const shown = useMemo(() => (needle ? list.items.filter((a) => a.name.toLowerCase().includes(needle)) : list.items), [list.items, needle]);
 
   const toast = useCallback((text: string, opts: Partial<ToastMsg> = {}) => {
     const id = ++toastSeq;
@@ -407,9 +412,9 @@ export default function GalleryApp() {
       list.patch(updated);
       if (updated.hidden && !unlocked) {
         // Hidden while locked: it leaves the view, like a delete.
-        const idx = list.items.findIndex((x) => x.id === a.id);
+        const idx = shown.findIndex((x) => x.id === a.id);
         if (route.asset === a.id) {
-          const neighbour = list.items[idx + 1] ?? list.items[idx - 1];
+          const neighbour = shown[idx + 1] ?? shown[idx - 1];
           if (neighbour) nav({ asset: neighbour.id }, 'replace');
           else closeViewer();
         }
@@ -440,7 +445,7 @@ export default function GalleryApp() {
       danger: true,
     });
     if (!ok) return;
-    const idx = list.items.findIndex((x) => x.id === a.id);
+    const idx = shown.findIndex((x) => x.id === a.id);
     try {
       await api.trash(a);
     } catch (e) {
@@ -450,7 +455,7 @@ export default function GalleryApp() {
     }
     // Move the viewer to a neighbour before removing.
     if (route.asset === a.id) {
-      const neighbour = list.items[idx + 1] ?? list.items[idx - 1];
+      const neighbour = shown[idx + 1] ?? shown[idx - 1];
       if (neighbour) nav({ asset: neighbour.id }, 'replace');
       else closeViewer();
     }
@@ -510,7 +515,7 @@ export default function GalleryApp() {
   const openTag = (name: string) => nav({ view: 'gallery', tag: name, library: '', folder: '', favorite: false, asset: null });
 
   const openViewer = (index: number) => {
-    const a = list.items[index];
+    const a = shown[index];
     if (a) nav({ asset: a.id });
   };
 
@@ -521,6 +526,14 @@ export default function GalleryApp() {
     if (history.state?.viewer) history.back();
     else nav({ asset: null }, 'replace');
   };
+
+  const closeNameFilter = () => {
+    setNameFilter(null);
+    window.scrollTo({ top: 0 });
+  };
+  useEffect(() => {
+    if (nameFilter !== null) nameInput.current?.focus();
+  }, [nameFilter !== null]);
 
   const rescan = async () => {
     try {
@@ -550,7 +563,9 @@ export default function GalleryApp() {
           <h1 onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>{title}</h1>
           {route.view === 'gallery' && (
             <span class="topbar-sub">
-              {list.total !== null ? `${list.total.toLocaleString()} item${list.total === 1 ? '' : 's'}` : ''}
+              {needle
+                ? `${shown.length.toLocaleString()} match${shown.length === 1 ? '' : 'es'}${list.hasMore ? ` in ${list.items.length.toLocaleString()} loaded` : ''}`
+                : list.total !== null ? `${list.total.toLocaleString()} item${list.total === 1 ? '' : 's'}` : ''}
               {status?.pending ? ` · indexing ${status.pending}` : status?.scanning ? ' · scanning' : ''}
             </span>
           )}
@@ -564,6 +579,12 @@ export default function GalleryApp() {
               filled={route.favorite}
               onClick={() => nav({ favorite: !route.favorite })}
             />
+<IconButton
+              icon="search"
+              label={nameFilter !== null ? 'Close filename filter' : 'Filter by filename'}
+              active={nameFilter !== null}
+              onClick={() => (nameFilter !== null ? closeNameFilter() : setNameFilter(''))}
+            />
             <IconButton icon="filter" label="Filter and view options" active={filtersActive} onClick={() => setFilters(true)} />
           </>
         )}
@@ -576,6 +597,26 @@ export default function GalleryApp() {
           />
         )}
       </header>
+
+      {route.view === 'gallery' && nameFilter !== null && (
+        <div class="name-filter">
+          <Icon name="search" size={16} />
+          <input
+            ref={nameInput}
+            type="search"
+            value={nameFilter}
+            placeholder="Filter by filename"
+            aria-label="Filter by filename"
+            autocomplete="off"
+            spellcheck={false}
+            onInput={(e) => setNameFilter((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') closeNameFilter();
+            }}
+          />
+          <IconButton icon="close" label="Clear filename filter" onClick={closeNameFilter} />
+        </div>
+      )}
 
       {route.view === 'gallery' && route.tag && (
         <nav class="folders" aria-label="Tag">
@@ -648,11 +689,17 @@ export default function GalleryApp() {
               <div class="skeleton-grid" aria-busy="true">
                 {Array.from({ length: 24 }, (_, i) => <div key={i} class="skeleton" />)}
               </div>
+            ) : needle && shown.length === 0 ? (
+              <div class="empty">
+                <Icon name="search" size={40} />
+                <p>No loaded filenames match “{nameFilter?.trim()}”.</p>
+                {!list.hasMore && <button type="button" class="btn" onClick={closeNameFilter}>Clear search</button>}
+              </div>
             ) : list.items.length === 0 && !list.error ? (
               <EmptyState route={route} scanning={!!status?.scanning || !!status?.pending} onClear={() => nav({ favorite: false, minRating: 0, kind: '', caption: '' })} />
             ) : (
               <Grid
-                items={list.items}
+                items={shown}
                 density={density}
                 groupByDay={route.order === 'desc' && density !== 's'}
                 hasMore={list.hasMore}
@@ -661,7 +708,12 @@ export default function GalleryApp() {
                 focusId={focusId}
               />
             )}
-            {list.hasMore && list.items.length > 0 && <div class="load-more"><Spinner /></div>}
+            {list.hasMore && list.items.length > 0 && (needle ? (
+              // Few matches leave the grid short, so infinite scroll may not reach further pages.
+              <div class="load-more">
+                <button type="button" class="btn btn-sm" onClick={() => void list.loadMore()}>Load more to search</button>
+              </div>
+            ) : <div class="load-more"><Spinner /></div>)}
           </>
         )}
       </main>
@@ -797,7 +849,7 @@ export default function GalleryApp() {
           <div class="viewer"><Spinner /></div>
         ) : (
           <ViewerHost
-            items={list.items}
+            items={shown}
             id={route.asset}
             hasMore={list.hasMore}
             onNeedMore={() => void list.loadMore()}

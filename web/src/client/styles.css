@@ -68,6 +68,24 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .9em; 
 .icon-btn.active { color: var(--accent); }
 .icon-btn.fav-btn.active { color: var(--fav); }
 
+/* ---- Filename filter ---------------------------------------------------------- */
+
+.name-filter {
+  position: sticky; top: calc(var(--top-h) + var(--safe-t)); z-index: 19;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px calc(4px + var(--safe-r)) 6px calc(14px + var(--safe-l));
+  background: rgba(11, 11, 13, .82);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  border-bottom: 1px solid rgba(255, 255, 255, .05);
+  color: var(--muted);
+}
+.name-filter input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg-3); color: var(--text); font: inherit; font-size: 16px;
+}
+.name-filter input:focus { outline: none; border-color: var(--accent); }
+
 /* ---- Folders ------------------------------------------------------------------ */
 
 .folders { padding: 8px calc(10px + var(--safe-r)) 6px calc(10px + var(--safe-l)); }
