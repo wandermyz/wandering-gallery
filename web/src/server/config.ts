@@ -68,6 +68,22 @@ export interface GenerateConfig {
   workflowsDir: string;
   /** Local prompt files (never in git), one `<flow>.yaml` per flow. */
   promptsDir: string;
+  /** One "prompt to tags" flow per LoRA, at /generate/wai-illustrious-lora-<id>. */
+  loras: LoraFlowConfig[];
+}
+
+export interface LoraFlowConfig {
+  id: string;
+  title: string;
+  /** File name as ComfyUI lists it under models/loras. */
+  lora: string;
+  strength: number;
+  /** Put in front of the generated tags (trigger word and class), e.g. "siggraph, cat". */
+  tags: string;
+  /** Appended to the negative prompt. */
+  negative: string;
+  /** Removed from the generated tags, e.g. "1girl" for an animal subject. */
+  dropTags: string[];
 }
 
 export class ConfigError extends Error {}
@@ -101,6 +117,12 @@ function str(v: unknown, where: string, fallback?: string): string {
   }
   if (typeof v !== 'string' || v.trim() === '') throw new ConfigError(`${where} must be a non-empty string`);
   return v;
+}
+
+function strList(v: unknown, where: string): string[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new ConfigError(`${where} must be a list of strings`);
+  return (v as string[]).map((x) => x.trim().toLowerCase()).filter(Boolean);
 }
 
 function bool(v: unknown, where: string, fallback: boolean): boolean {
@@ -173,6 +195,27 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     outputLibrary = 'comfyui';
   }
 
+  if (generate.loras !== undefined && generate.loras !== null && !Array.isArray(generate.loras)) {
+    throw new ConfigError('generate.loras must be a list');
+  }
+  const loraIds = new Set<string>();
+  const loras = ((generate.loras ?? []) as unknown[]).map((entry, i): LoraFlowConfig => {
+    const l = asObject(entry, `generate.loras[${i}]`);
+    const id = str(l.id, `generate.loras[${i}].id`);
+    if (!ID_RE.test(id)) throw new ConfigError(`generate.loras[${i}].id "${id}" must be lowercase letters, digits, "-" or "_"`);
+    if (loraIds.has(id)) throw new ConfigError(`duplicate generate.loras id "${id}"`);
+    loraIds.add(id);
+    return {
+      id,
+      title: str(l.title, `generate.loras[${i}].title`, id),
+      lora: str(l.lora, `generate.loras[${i}].lora`),
+      strength: num(l.strength, `generate.loras[${i}].strength`, 1, -10, 10),
+      tags: l.tags === undefined || l.tags === null ? '' : str(l.tags, `generate.loras[${i}].tags`),
+      negative: l.negative === undefined || l.negative === null ? '' : str(l.negative, `generate.loras[${i}].negative`),
+      dropTags: strList(l.dropTags, `generate.loras[${i}].dropTags`),
+    };
+  });
+
   const hiddenLib = libraries.find((l) => l.hidden);
   if (hiddenLib && !passphraseHash) throw new ConfigError(`library "${hiddenLib.id}" is hidden, which needs hidden.passphraseHash`);
 
@@ -211,6 +254,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       outputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
       promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),
+      loras,
     },
     hidden: {
       passphraseHash,

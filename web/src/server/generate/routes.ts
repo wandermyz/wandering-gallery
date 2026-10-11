@@ -3,7 +3,7 @@ import type { AppConfig } from '../config.js';
 import type { Db } from '../db.js';
 import { HttpError } from '../paths.js';
 import { CliComfyClient, type ComfyClient } from './comfy.js';
-import { FLOW_ID, MAX_PROMPT, MAX_TAGS, TagsFlow } from './flow.js';
+import { MAX_PROMPT, MAX_TAGS, TagsFlow } from './flow.js';
 import { MAX_BATCH, MAX_VARIATIONS, Runs } from './runs.js';
 
 function text(v: unknown, name: string, max: number): string {
@@ -14,18 +14,19 @@ function text(v: unknown, name: string, max: number): string {
 
 /** `/api/generate/*`: the generation flows. */
 export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, comfy: ComfyClient = new CliComfyClient(cfg.generate.comfyui, cfg.generate.comfyCli)) {
-  const flow = new TagsFlow(cfg.generate);
+  const flows = new Map(TagsFlow.all(cfg.generate).map((f) => [f.id, f]));
   const runs = new Runs(comfy, db, cfg.generate.outputLibrary, app.log);
   app.addHook('onClose', async () => runs.close());
 
   const getFlow = (id: string) => {
-    if (id !== FLOW_ID) throw new HttpError('unknown flow', 404);
-    return flow;
+    const f = flows.get(id);
+    if (!f) throw new HttpError('unknown flow', 404);
+    return f;
   };
 
   app.get('/api/generate/flows', async (_req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return { flows: [flow.info()] };
+    return { flows: [...flows.values()].map((f) => f.info()) };
   });
 
   app.get('/api/generate/status', async (_req, reply) => {

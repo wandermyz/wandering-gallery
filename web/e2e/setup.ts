@@ -75,6 +75,12 @@ generate:
   comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
   outputLibrary: comfy
   promptsDir: ./prompts
+  loras:
+    - id: mycat
+      title: My cat LoRA
+      lora: mycat.safetensors
+      tags: mycat, cat
+      negative: realistic
 hidden:
   passphraseHash: ${await hashPassphrase('e2e passphrase')}
 tools:

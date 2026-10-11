@@ -39,7 +39,7 @@ export default function GenerateApp() {
 
   const id = pathname.split('/')[2] ?? '';
   const flow = flows?.find((f) => f.id === id) ?? null;
-  // A single flow for now: /generate opens it.
+  // /generate (or an unknown flow) opens the first one.
   useEffect(() => {
     if (flows?.length && !flow) goTo(`/generate/${flows[0].id}`, { replace: true });
   }, [flows, flow]);

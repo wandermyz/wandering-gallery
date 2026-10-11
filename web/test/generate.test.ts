@@ -119,6 +119,33 @@ describe('generate flow graphs', () => {
     expect([w(8), w(9), w(12), w(3), w(5)]).toEqual(['a girl', 'SYSTEM PROMPT', 'masterpiece', 'worst quality', 42]);
   });
 
+  it('builds LoRA flows from the same prompts with the trigger tags in front', () => {
+    const lora = { id: 'cat', title: 'Cat LoRA', lora: 'cat.safetensors', strength: 0.9, tags: 'mycat, cat', negative: 'realistic', dropTags: ['1girl'] };
+    const cfg = parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { promptsDir: path.join(dir, 'prompts'), loras: [lora] } }).generate;
+    const [plain, f] = TagsFlow.all(cfg);
+    expect(plain.id).toBe('wai-illustrious-tags');
+    expect(f.info()).toMatchObject({ id: 'wai-illustrious-lora-cat', title: 'WAI-Illustrious · Cat LoRA', ready: true });
+    expect(f.tagGraph('a cat', false)['9'].inputs.value).toBe('SYSTEM PROMPT');
+    expect(f.tagsFrom({ '14': ['1girl, cat, sitting, no humans'] })).toBe('mycat, cat, sitting, no humans');
+
+    const { graph, pnginfo } = f.imageJob('a cat', 'mycat, cat, sitting', 7);
+    expect(graph['15'].inputs).toMatchObject({ model: ['1', 0], lora_name: 'cat.safetensors', strength_model: 0.9 });
+    expect(graph['5'].inputs.model).toEqual(['15', 0]);
+    expect(graph['3'].inputs.text).toBe('worst quality, realistic');
+    const nodes = (pnginfo.workflow as { nodes: { id: number; widgets_values: unknown[] }[] }).nodes;
+    expect(nodes.find((n) => n.id === 15)!.widgets_values).toEqual(['cat.safetensors', 0.9]);
+    expect(nodes.find((n) => n.id === 3)!.widgets_values[0]).toBe('worst quality, realistic');
+
+    // A per-flow file overrides keys of the shared one.
+    fs.writeFileSync(path.join(dir, 'prompts', 'wai-illustrious-lora-cat.yaml'), 'traits:\n  - [sleeping, jumping]\n');
+    expect(f.tagGraph('a cat', true, () => 0)['8'].inputs.value).toBe('a cat\n\nSuggested traits: sleeping');
+    expect(plain.tagGraph('a cat', true, () => 0)['8'].inputs.value).toBe('a cat\n\nSuggested traits: red hair, blue eyes');
+    fs.rmSync(path.join(dir, 'prompts', 'wai-illustrious-lora-cat.yaml'));
+
+    expect(() => parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { loras: [{ id: 'X', lora: 'x' }] } })).toThrow(/lowercase/);
+    expect(() => parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { loras: [{ id: 'x' }] } })).toThrow(/lora is required/);
+  });
+
   it('reports a missing or incomplete prompts file', () => {
     const other = tmpDir();
     const f = new TagsFlow(parseConfig({ libraries: [{ id: 'a', path: other }], generate: { promptsDir: other } }).generate);
@@ -158,6 +185,19 @@ describe('generate API', () => {
     const csrf = (await app.inject({ url: '/api/session' })).json().csrf;
     return app.inject({ method: 'POST', url, payload: body as object, headers: { 'x-csrf-token': csrf } });
   }
+
+  it('runs a LoRA flow with its own id', async () => {
+    await setup();
+    await app.close();
+    env.cfg.generate.loras = [{ id: 'cat', title: 'Cat', lora: 'cat.safetensors', strength: 1, tags: 'mycat', negative: '', dropTags: [] }];
+    app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, comfy });
+    const flows = (await app.inject({ url: '/api/generate/flows' })).json().flows;
+    expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat']);
+    expect((await post('/api/generate/flows/wai-illustrious-lora-cat/tags', { prompt: 'a cat' })).json().tags).toBe('mycat, tags 1');
+    const run = (await post('/api/generate/flows/wai-illustrious-lora-cat/runs', { prompt: 'a cat', variations: ['mycat, x'], batch: 1 })).json();
+    expect(run.flow).toBe('wai-illustrious-lora-cat');
+    expect(comfy.submitted[0].graph['15'].inputs.lora_name).toBe('cat.safetensors');
+  });
 
   it('lists the flow and ComfyUI status', async () => {
     await setup();
