@@ -22,7 +22,7 @@ libraries:
 `);
     const cfg = loadConfig(file);
     expect(cfg.libraries).toHaveLength(2);
-    expect(cfg.libraries[0]).toEqual({ id: 'comfyui', name: 'ComfyUI Outputs', path: path.join(dir, 'out'), recursive: true, writable: true, showInAll: true });
+    expect(cfg.libraries[0]).toEqual({ id: 'comfyui', name: 'ComfyUI Outputs', path: path.join(dir, 'out'), recursive: true, writable: true, showInAll: true, hidden: false });
     // Libraries are read-only unless explicitly writable.
     expect(cfg.libraries[1]).toMatchObject({ id: 'inputs', path: '/srv/inputs', recursive: false, writable: false });
     expect(cfg.server).toEqual({ host: '127.0.0.1', port: 2334, allowedHosts: [] });

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FFMPEG, FFPROBE, ageAll, fixture, hasFfmpeg, makeJpeg, makePng, makeVideo } from '../test/helpers.js';
+import { hashPassphrase } from '../src/server/unlock.js';
 
 /** Builds a throwaway library with a mix of media for the browser tests. */
 async function setup() {
@@ -74,6 +75,8 @@ generate:
   comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
   outputLibrary: comfy
   promptsDir: ./prompts
+hidden:
+  passphraseHash: ${await hashPassphrase('e2e passphrase')}
 tools:
   ffmpeg: ${FFMPEG}
   ffprobe: ${FFPROBE}

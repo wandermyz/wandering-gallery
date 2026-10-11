@@ -13,6 +13,7 @@
     "dev:web": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
     "start": "node dist/server/main.js",
+    "hash-passphrase": "tsx src/server/hash-passphrase.ts",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "tsx e2e/setup.ts && playwright test"

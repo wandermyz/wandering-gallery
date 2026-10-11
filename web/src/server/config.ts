@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import { isPassphraseHash } from './unlock.js';
 
 export interface LibraryConfig {
   id: string;
@@ -12,6 +13,8 @@ export interface LibraryConfig {
   writable: boolean;
   /** Include this library in the cross-library views (All media, Favorites). */
   showInAll: boolean;
+  /** Treat every asset in it as hidden: the library only shows while unlocked. */
+  hidden: boolean;
 }
 
 export interface AppConfig {
@@ -46,6 +49,12 @@ export interface AppConfig {
     ffprobe: string;
   };
   generate: GenerateConfig;
+  hidden: {
+    /** scrypt hash of the passphrase that unlocks hidden assets (`npm run hash-passphrase`), or null. */
+    passphraseHash: string | null;
+    /** How long an unlock lasts. */
+    unlockMinutes: number;
+  };
 }
 
 export interface GenerateConfig {
@@ -119,6 +128,12 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   const thumbs = asObject(root.thumbnails, 'thumbnails');
   const tools = asObject(root.tools, 'tools');
   const generate = asObject(root.generate, 'generate');
+  const hidden = asObject(root.hidden, 'hidden');
+  let passphraseHash: string | null = null;
+  if (hidden.passphraseHash !== undefined && hidden.passphraseHash !== null) {
+    passphraseHash = str(hidden.passphraseHash, 'hidden.passphraseHash');
+    if (!isPassphraseHash(passphraseHash)) throw new ConfigError('hidden.passphraseHash must be the output of `npm run hash-passphrase`');
+  }
 
   if (!Array.isArray(root.libraries) || root.libraries.length === 0) {
     throw new ConfigError('libraries must be a non-empty list');
@@ -139,6 +154,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       recursive: bool(lib.recursive, `libraries[${i}].recursive`, true),
       writable: bool(lib.writable, `libraries[${i}].writable`, false),
       showInAll: bool(lib.showInAll, `libraries[${i}].showInAll`, true),
+      hidden: bool(lib.hidden, `libraries[${i}].hidden`, false),
     };
   });
 
@@ -156,6 +172,9 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   } else if (seen.has('comfyui')) {
     outputLibrary = 'comfyui';
   }
+
+  const hiddenLib = libraries.find((l) => l.hidden);
+  if (hiddenLib && !passphraseHash) throw new ConfigError(`library "${hiddenLib.id}" is hidden, which needs hidden.passphraseHash`);
 
   const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   const xdgData = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
@@ -192,6 +211,10 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       outputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
       promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),
+    },
+    hidden: {
+      passphraseHash,
+      unlockMinutes: num(hidden.unlockMinutes, 'hidden.unlockMinutes', 15, 1, 1440),
     },
   };
 }

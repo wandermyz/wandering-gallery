@@ -1,8 +1,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query } from './api';
+import { api, ApiError, fetchSession, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query, type Session } from './api';
 import { Grid, type Density } from './Grid';
-import { TagsView } from './Tags';
+import { loadTags, TagsView } from './Tags';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
 import { CAPTION_EVENT, cx, formatBytes, formatDate } from '../common/util';
@@ -206,6 +206,7 @@ export default function GalleryApp() {
   const [libraries, setLibraries] = useState<Library[] | null>(null);
   const [libError, setLibError] = useState<string | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [folderRev, setFolderRev] = useState(0);
   const [menu, setMenu] = useState(false);
   const [filters, setFilters] = useState(false);
   const [density, setDensity] = useState<Density>(() => (localStorage.getItem('wg.density') as Density) || 'm');
@@ -214,6 +215,11 @@ export default function GalleryApp() {
   const [status, setStatus] = useState<{ pending: number; scanning: boolean; trash: number; trashRetentionDays: number } | null>(null);
   const [focusId, setFocusId] = useState<number | null>(null);
   const [newCount, setNewCount] = useState(0);
+  const [hiddenEnabled, setHiddenEnabled] = useState(false);
+  const [unlockMinutes, setUnlockMinutes] = useState(15);
+  /** When this browser's unlock ends (local clock), or null while locked. */
+  const [unlockedUntil, setUnlockedUntil] = useState<number | null>(null);
+  const [unlockSheet, setUnlockSheet] = useState(false);
 
   const q = useMemo(() => queryOf(route), [route.library, route.folder, route.tag, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
   const list = useAssets(q, route.view === 'gallery');
@@ -235,7 +241,51 @@ export default function GalleryApp() {
   useEffect(() => {
     void loadLibraries();
     void loadStatus();
+    void syncSession();
   }, []);
+
+  // ---- Hidden items: unlock state ----------------------------------------------------
+
+  const applySession = (s: Session) => {
+    setHiddenEnabled(s.hiddenEnabled);
+    setUnlockMinutes(s.unlockMinutes);
+    setUnlockedUntil(s.unlockedForMs > 0 ? Date.now() + s.unlockedForMs : null);
+  };
+  const syncSession = () => fetchSession().then(applySession, () => {});
+
+  // Everything visible depends on the lock: reload lists whenever it changes.
+  const unlocked = unlockedUntil !== null;
+  const firstLock = useRef(true);
+  useEffect(() => {
+    if (firstLock.current) {
+      firstLock.current = false;
+      return;
+    }
+    // A hidden library's view, or a hidden item open in the viewer, cannot stay on screen.
+    if (!unlocked && route.library && libById.get(route.library)?.hidden) {
+      nav({ view: 'gallery', library: '', folder: '', asset: null }, 'replace');
+    } else if (!unlocked && route.asset !== null) {
+      const open = list.items.find((a) => a.id === route.asset);
+      if (open && (open.hidden || open.libraryHidden)) closeViewer();
+    }
+    // A hidden tag's view cannot stay either; the server finds nothing for it while locked.
+    void list.reload(true);
+    void loadLibraries();
+    void loadStatus();
+    void loadTags().then((all) => {
+      if (!unlocked && route.tag && !all.some((t) => t.name.toLowerCase() === route.tag.toLowerCase())) {
+        nav({ view: 'tags', tag: '', asset: null }, 'replace');
+      }
+    }, () => {});
+    setFolderRev((n) => n + 1);
+  }, [unlocked]);
+
+  // Relock when the unlock runs out (the server stops serving hidden items on its own).
+  useEffect(() => {
+    if (unlockedUntil === null) return;
+    const t = setTimeout(() => void syncSession(), Math.max(0, unlockedUntil - Date.now()) + 500);
+    return () => clearTimeout(t);
+  }, [unlockedUntil]);
 
   useEffect(() => {
     localStorage.setItem('wg.density', density);
@@ -252,7 +302,7 @@ export default function GalleryApp() {
     return () => {
       alive = false;
     };
-  }, [route.library, route.folder, route.view, libraries]);
+  }, [route.library, route.folder, route.view, libraries, folderRev]);
 
   // Live updates from the server (new / removed files).
   const listRef = useRef(list);
@@ -284,6 +334,7 @@ export default function GalleryApp() {
       if (document.visibilityState === 'visible') {
         void listRef.current.refreshHead([]);
         void loadStatus();
+        void syncSession();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -343,6 +394,31 @@ export default function GalleryApp() {
     } catch (e) {
       list.patch(a);
       toast(`Could not update rating: ${(e as Error).message}`, { kind: 'error' });
+    }
+  };
+
+  const onHide = async (a: Asset) => {
+    if (a.hidden && !unlocked) {
+      setUnlockSheet(true);
+      return;
+    }
+    try {
+      const updated = await api.hide(a.id, !a.hidden);
+      list.patch(updated);
+      if (updated.hidden && !unlocked) {
+        // Hidden while locked: it leaves the view, like a delete.
+        const idx = list.items.findIndex((x) => x.id === a.id);
+        if (route.asset === a.id) {
+          const neighbour = list.items[idx + 1] ?? list.items[idx - 1];
+          if (neighbour) nav({ asset: neighbour.id }, 'replace');
+          else closeViewer();
+        }
+        list.remove(a.id);
+        void loadLibraries();
+      }
+      toast(updated.hidden ? 'Hidden' : 'No longer hidden');
+    } catch (e) {
+      toast(`Could not update: ${(e as Error).message}`, { kind: 'error' });
     }
   };
 
@@ -491,6 +567,14 @@ export default function GalleryApp() {
             <IconButton icon="filter" label="Filter and view options" active={filtersActive} onClick={() => setFilters(true)} />
           </>
         )}
+        {hiddenEnabled && (
+          <IconButton
+            icon={unlocked ? 'unlock' : 'lock'}
+            label={unlocked ? 'Hidden items are shown' : 'Show hidden items'}
+            active={unlocked}
+            onClick={() => setUnlockSheet(true)}
+          />
+        )}
       </header>
 
       {route.view === 'gallery' && route.tag && (
@@ -540,7 +624,7 @@ export default function GalleryApp() {
 
       <main class="content">
         {route.view === 'tags' ? (
-          <TagsView onOpen={openTag} toast={toast} ask={ask} />
+          <TagsView onOpen={openTag} toast={toast} ask={ask} hiding={hiddenEnabled} unlocked={unlocked} onUnlock={() => setUnlockSheet(true)} />
         ) : route.view === 'trash' ? (
           <TrashView toast={toast} ask={ask} onChange={() => {
             void loadStatus();
@@ -622,6 +706,7 @@ export default function GalleryApp() {
               <Icon name="folder" />
               <span class="lib-name">
                 {l.name}
+                {l.hidden && <span class="lib-ro" title="Hidden library"><Icon name="eye-off" size={12} /></span>}
                 {!l.writable && <span class="lib-ro" title="Read-only"><Icon name="lock" size={12} /></span>}
                 {!l.available && <span class="lib-err">unavailable</span>}
               </span>
@@ -721,6 +806,7 @@ export default function GalleryApp() {
             onFavorite={onFavorite}
             onRate={onRate}
             onDelete={onDelete}
+            onHide={hiddenEnabled ? onHide : null}
             onShare={onShare}
             onAssetChange={applyAsset}
             onOpenTag={openTag}
@@ -730,9 +816,111 @@ export default function GalleryApp() {
         )
       )}
 
+      <UnlockSheet
+        open={unlockSheet}
+        unlockedUntil={unlockedUntil}
+        minutes={unlockMinutes}
+        onClose={() => setUnlockSheet(false)}
+        onSession={(s) => {
+          applySession(s);
+          if (s.unlockedForMs > 0) setUnlockSheet(false);
+        }}
+      />
+
       <ConfirmDialog opts={confirm?.opts ?? null} onResult={(ok) => { confirm?.resolve(ok); setConfirm(null); }} />
       <Toasts toasts={toasts} dismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </div>
+  );
+}
+
+/** Passphrase entry while locked; a countdown and a Lock now button while unlocked. */
+function UnlockSheet({ open, unlockedUntil, minutes, onClose, onSession }: {
+  open: boolean;
+  unlockedUntil: number | null;
+  minutes: number;
+  onClose: () => void;
+  onSession: (s: Session) => void;
+}) {
+  const [passphrase, setPassphrase] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const input = useRef<HTMLInputElement>(null);
+
+  // Reset on close, not on open: an effect on open could wipe text typed (or autofilled) right away.
+  useEffect(() => {
+    if (open) {
+      if (unlockedUntil === null) input.current?.focus();
+      return;
+    }
+    setPassphrase('');
+    setError(null);
+  }, [open, unlockedUntil === null]);
+  useEffect(() => {
+    if (!open || unlockedUntil === null) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [open, unlockedUntil]);
+
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!passphrase || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onSession(await api.unlock(passphrase));
+      setPassphrase('');
+    } catch (err) {
+      setError((err as Error).message);
+      input.current?.select();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const lock = async () => {
+    setBusy(true);
+    try {
+      onSession(await api.lock());
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const left = unlockedUntil === null ? 0 : Math.max(0, Math.ceil((unlockedUntil - now) / 1000));
+  return (
+    <Sheet open={open} onClose={onClose} title="Hidden items">
+      {unlockedUntil === null ? (
+        <form class="unlock-form" onSubmit={submit}>
+          <p class="muted">Enter the passphrase to show hidden items in this browser for {minutes} minutes.</p>
+          <input
+            ref={input}
+            class="ds-input"
+            type="password"
+            value={passphrase}
+            placeholder="Passphrase"
+            aria-label="Passphrase"
+            autocomplete="current-password"
+            disabled={busy}
+            onInput={(e) => setPassphrase((e.target as HTMLInputElement).value)}
+          />
+          {error && <p class="unlock-error" role="alert">{error}</p>}
+          <button type="submit" class="btn btn-primary btn-block" disabled={busy || !passphrase}>Unlock</button>
+        </form>
+      ) : (
+        <div class="unlock-form">
+          <p class="muted">Hidden items are shown in this browser. They lock again in</p>
+          <p class="unlock-timer">{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</p>
+          {error && <p class="unlock-error" role="alert">{error}</p>}
+          <button type="button" class="btn btn-block" disabled={busy} onClick={() => void lock()}>
+            <Icon name="lock" size={16} /> Lock now
+          </button>
+        </div>
+      )}
+    </Sheet>
   );
 }
 

@@ -171,7 +171,7 @@ export interface Env {
   close(): Promise<void>;
 }
 
-export async function makeEnv(libraries: { id: string; writable?: boolean; recursive?: boolean; showInAll?: boolean }[] = [{ id: 'main', writable: true }], extra: Record<string, unknown> = {}): Promise<Env> {
+export async function makeEnv(libraries: { id: string; writable?: boolean; recursive?: boolean; showInAll?: boolean; hidden?: boolean }[] = [{ id: 'main', writable: true }], extra: Record<string, unknown> = {}): Promise<Env> {
   const root = tmpDir();
   for (const l of libraries) fs.mkdirSync(path.join(root, 'libs', l.id), { recursive: true });
   const cfg = parseConfig({
@@ -179,7 +179,7 @@ export async function makeEnv(libraries: { id: string; writable?: boolean; recur
     cacheDir: path.join(root, 'cache'),
     scan: { stableSeconds: 1, intervalMinutes: 0 },
     tools: { ffmpeg: FFMPEG, ffprobe: FFPROBE },
-    libraries: libraries.map((l) => ({ id: l.id, name: l.id.toUpperCase(), path: path.join(root, 'libs', l.id), writable: l.writable ?? true, recursive: l.recursive ?? true, showInAll: l.showInAll })),
+    libraries: libraries.map((l) => ({ id: l.id, name: l.id.toUpperCase(), path: path.join(root, 'libs', l.id), writable: l.writable ?? true, recursive: l.recursive ?? true, showInAll: l.showInAll, hidden: l.hidden })),
     ...extra,
   });
   const db = new Db(path.join(cfg.dataDir, 'gallery.db'));

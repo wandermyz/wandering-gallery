@@ -417,20 +417,20 @@ export class Indexer extends EventEmitter {
   /**
    * Copy-then-delete moves (rsync, cross-disk mv) create the new file before the
    * old one disappears, so the new copy was indexed as a fresh, unrated asset.
-   * When the old file goes missing, hand its favorite/rating to an identical
+   * When the old file goes missing, hand its favorite/rating/hidden flag to an identical
    * copy that appeared recently and has not been organised yet.
    */
   private adoptIntoCopy(missingId: number) {
     const gone = this.db.asset(missingId);
-    if (!gone || (!gone.favorite && !gone.rating)) return;
+    if (!gone || (!gone.favorite && !gone.rating && !gone.hidden)) return;
     const copy = this.db.get<AssetRow>(
       `SELECT * FROM assets WHERE status = 'ready' AND fingerprint = ? AND size = ? AND favorite = 0 AND rating = 0
-         AND first_seen_ms >= ? ORDER BY first_seen_ms DESC LIMIT 1`,
+         AND hidden = 0 AND first_seen_ms >= ? ORDER BY first_seen_ms DESC LIMIT 1`,
       gone.fingerprint, gone.size, Date.now() - ADOPT_WINDOW_MS,
     );
     if (!copy) return;
-    this.db.run('UPDATE assets SET favorite = ?, rating = ? WHERE id = ?', gone.favorite, gone.rating, copy.id);
-    this.db.run('UPDATE assets SET favorite = 0, rating = 0 WHERE id = ?', gone.id);
+    this.db.run('UPDATE assets SET favorite = ?, rating = ?, hidden = ? WHERE id = ?', gone.favorite, gone.rating, gone.hidden, copy.id);
+    this.db.run('UPDATE assets SET favorite = 0, rating = 0, hidden = 0 WHERE id = ?', gone.id);
   }
 
   purgeMissing() {
