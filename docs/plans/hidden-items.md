@@ -41,7 +41,8 @@ refused by the API, until the browser is unlocked with a passphrase. An unlock l
 | `/api/assets` (grid), counts in `/api/libraries`, `/api/folders`, `/api/status` (trash count) | hidden rows filtered out |
 | `/api/trash` | filtered out |
 | `/api/assets/:id`, `/metadata`, `/raw/*`, `/caption`, `/thumb`, `/preview`, `/file` | 404 |
-| favorite, rating, caption, trash, dataset, restore, purge, unhide | 404 |
+| favorite, rating, tags, caption, trash, restore, purge, unhide | 404 |
+| `/api/tags` | hidden items left out of counts; covers never hidden |
 | folder covers | never a hidden item, even when unlocked |
 
 Search is out of scope for now. When it exists, it filters the same way.
@@ -84,5 +85,5 @@ Assets carry `hidden: boolean`.
 
 ## Not covered
 
-Access to the files on disk (they aren't encrypted). Dataset move/copy keeps no
-hidden state (that feature is going away).
+Access to the files on disk (they aren't encrypted). Tag names stay visible while
+locked (only the counts change).
