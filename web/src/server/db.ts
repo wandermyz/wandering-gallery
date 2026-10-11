@@ -37,6 +37,8 @@ export interface AssetRow {
   caption_status?: string | null;
   has_candidate?: number | null;
   caption_rev?: number | null;
+  /** Tag names joined with TAG_SEP (see CAPTION_JOIN). */
+  tag_names?: string | null;
 }
 
 export interface MetadataRow {
@@ -62,11 +64,16 @@ export interface CaptionRow {
   rev: number;
 }
 
-/** Caption columns joined onto asset rows for the browser. */
-export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.has_candidate, captions.rev AS caption_rev
+/** Separates tag names in `tag_names`; tag names cannot contain control characters. */
+export const TAG_SEP = '\x1f';
+
+/** Caption columns and tag names joined onto asset rows for the browser. */
+export const CAPTION_JOIN = `SELECT assets.*, captions.caption_status, captions.has_candidate, captions.rev AS caption_rev,
+  (SELECT group_concat(name, char(31)) FROM (SELECT tags.name FROM asset_tags JOIN tags ON tags.id = asset_tags.tag_id
+    WHERE asset_tags.asset_id = assets.id ORDER BY tags.name COLLATE NOCASE)) AS tag_names
   FROM assets LEFT JOIN captions ON captions.asset_id = assets.id`;
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const MIGRATIONS: string[] = [
   `
@@ -142,6 +149,21 @@ const MIGRATIONS: string[] = [
   // signatures so the next scan re-reads every caption.
   `
   UPDATE captions SET txt_sig = NULL, json_sig = NULL;
+  `,
+  // User tags. Stored only here, never in the files; they follow the asset row (renames,
+  // trash and restore) and go away with it.
+  `
+  CREATE TABLE tags (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_ms INTEGER NOT NULL
+  );
+  CREATE TABLE asset_tags (
+    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (asset_id, tag_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX asset_tags_tag ON asset_tags(tag_id, asset_id);
   `,
 ];
 

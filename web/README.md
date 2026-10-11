@@ -11,8 +11,8 @@ output on your own machine.
   from PNG, WebP, AVIF, MP4/MOV/WebM, and shows prompts, seed, sampler,
   scheduler, steps, CFG, models, and LoRAs. You can copy prompts and open the
   raw JSON.
-- **Favorites and 0–5 star ratings**, with filters. These are stored only in
-  SQLite and never written into your files.
+- **Favorites, 0–5 star ratings and tags**, with filters. These are stored only
+  in SQLite and never written into your files.
 - **Safe delete**: deleted files move to a trash folder and can be restored
   for 7 days, with their rating and metadata intact.
 - **Live**: newly generated files show up within seconds without a reload.
@@ -99,8 +99,6 @@ libraries:
 trash:
   retentionDays: 7
 
-datasets:
-  root: ~/Datasets               # each subfolder is a training dataset
 ```
 
 | Location | Contents |
@@ -164,6 +162,7 @@ experience.
 | Close viewer | swipe down, back button | `Esc` |
 | Favorite | ♥ button | `F` |
 | Rate | tap a star (tap again to clear) | `0`–`5` |
+| Add a tag | ⓘ → *Tags* | `T` |
 | Details / metadata | ⓘ button | `I` |
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
@@ -178,6 +177,21 @@ The ☰ menu switches between *All media*, *Favorites*, each library, and
 favorites only, minimum rating, sort order, whether subfolders are included,
 and thumbnail size. The view state lives in the URL, so the browser's back
 button and bookmarks work.
+
+### Tags
+
+The details panel (ⓘ, or `T` to jump straight to the input) has a *Tags*
+section. Type to filter the existing tags and pick one, or create a new one
+with *Create “…”* or Enter. Tags are case-insensitive: "Sunset" and "sunset" are
+the same tag, and it keeps the spelling it was created with. Tap a tag's ×
+to remove it, or its name to see everything with that tag.
+
+*Tags* in the ☰ menu lists every tag with a cover image and a count. Open one to
+browse its images across all libraries, including those with
+`showInAll: false`; the usual filters still apply. You can also rename a tag
+there (renaming it to an existing tag merges the two) or delete it. Tags live
+only in SQLite. They stay with a file when it's renamed, moved or trashed and
+restored, and go away when it's permanently deleted.
 
 ### Training captions
 
@@ -195,19 +209,6 @@ files are the source of truth. SQLite only caches them for filtering, and
 re-reads them whenever their size, mtime, or inode changes. Sidecars are never
 listed as media, and they move to the trash and back together with their
 image.
-
-### Adding to a training dataset
-
-Every first-level folder under `datasets.root` (default `~/Datasets`) is a
-dataset, in [wandering-lora](https://github.com/wandermyz/wandering-lora)'s
-layout. The details panel has an *Add to dataset* button: type to filter the
-existing datasets or to create a new one, pick *Move* or *Copy* (the choice is
-remembered), and the file goes to `<dataset>/images/` together with its caption
-sidecars. If the name is already taken (by the file or either sidecar), you're
-asked to cancel, replace, or keep both. *Replace* moves the existing file and its
-sidecars to the trash, and *Keep both* adds a `-2`, `-3`, ... suffix. Moving
-needs a writable library. If the dataset's images
-folder is itself a library, a moved file keeps its rating and favorite.
 
 ### Generating images
 
@@ -288,9 +289,9 @@ raw `prompt`/`workflow` JSON is still stored and shown.
 ## Safety model
 
 - **Read-only by default.** Original files are opened for reading only.
-  Indexing, thumbnails, favorites, and ratings never write to them. A file
-  only moves on an explicit delete (into the trash folder, and back on
-  restore) or an explicit *Add to dataset* with *Move*.
+  Indexing, thumbnails, favorites, and ratings never write to them. The only
+  time a file moves is an explicit, confirmed delete. It's moved (`rename`)
+  into the trash folder and moved back on restore.
 - **Strict path confinement.** API requests refer to assets by numeric ID,
   never by path. Every file access is resolved with `realpath` and checked to
   be inside its library. Symlinks that point outside a library are ignored,
@@ -298,9 +299,7 @@ raw `prompt`/`workflow` JSON is still stored and shown.
 - **Writable flag.** Deleting from a library with `writable: false`, or editing
   a caption there, is rejected by the server, not just hidden in the UI.
   Caption sidecars (`.txt`, `.caption.json`) are the only files the gallery
-  ever writes inside a library. *Add to dataset* writes only inside
-  `datasets.root` and moves only out of writable libraries. A file is only
-  replaced when you choose *Replace*, and the old one goes to the trash.
+  ever writes inside a library.
 - **Files being generated.** ComfyUI writes images directly to their final
   name, and video muxers write the index last. A file is only indexed or
   deletable once its size and mtime have been stable for `stableSeconds` *and*
