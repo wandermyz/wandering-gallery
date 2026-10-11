@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
 import { Indexer } from '../src/server/indexer.js';
-import { ageAll, fixture, hasFfmpeg, makeEnv, makePng, makeVideo, sha, tmpDir, type Env } from './helpers.js';
+import { ageAll, fixture, hasFfmpeg, makeEnv, makePng, makeVideo, sha, type Env } from './helpers.js';
 
 let env: Env;
 let app: FastifyInstance;
@@ -15,8 +15,8 @@ afterEach(async () => {
   app = undefined!;
 });
 
-async function setup(libs?: Parameters<typeof makeEnv>[0], extra?: Parameters<typeof makeEnv>[1]) {
-  env = await makeEnv(libs, extra);
+async function setup(libs?: Parameters<typeof makeEnv>[0]) {
+  env = await makeEnv(libs);
   app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null });
   return { env, app };
 }
@@ -271,37 +271,6 @@ describe('request protection', () => {
     expect((await app.inject({ url: '/api/assets/999999/file' })).statusCode).toBe(404);
     expect((await app.inject({ url: '/api/assets?cursor=1;DROP' })).statusCode).toBe(400);
     expect((await app.inject({ url: '/api/../../etc/passwd' })).statusCode).toBe(404);
-  });
-});
-
-describe('datasets', () => {
-  it('lists datasets and moves an asset into one', async () => {
-    const dsRoot = tmpDir('wg-ds-');
-    await setup(undefined, { datasets: { root: dsRoot } });
-    fs.mkdirSync(path.join(dsRoot, 'cats'));
-    await makePng(path.join(env.lib('main'), 'pic.png'), {});
-    ageAll(env.root);
-    await env.sync();
-    const a = (await app.inject({ url: '/api/assets' })).json().items[0];
-    expect((await app.inject({ url: '/api/datasets' })).json().datasets).toEqual([{ name: 'cats', count: 0 }]);
-    expect((await post(`/api/assets/${a.id}/dataset`, { dataset: 'cats', mode: 'rename' })).statusCode).toBe(400);
-    const r = await post(`/api/assets/${a.id}/dataset`, { dataset: 'cats', mode: 'move', size: a.size, mtimeMs: a.mtimeMs });
-    expect(r.statusCode).toBe(200);
-    expect(r.json()).toMatchObject({ mode: 'move', dataset: 'cats', created: false, name: 'pic.png', asset: null });
-    expect(fs.existsSync(path.join(dsRoot, 'cats', 'images', 'pic.png'))).toBe(true);
-    expect((await app.inject({ url: '/api/assets' })).json().items).toHaveLength(0);
-    // Same name again: 409 with what is in the way, until the client picks replace or rename.
-    await makePng(path.join(env.lib('main'), 'pic.png'), { color: '#123456' });
-    ageAll(env.root);
-    await env.sync();
-    const b = (await app.inject({ url: '/api/assets' })).json().items[0];
-    const c = await post(`/api/assets/${b.id}/dataset`, { dataset: 'cats', mode: 'copy' });
-    expect(c.statusCode).toBe(409);
-    expect(c.json()).toMatchObject({ error: expect.stringMatching(/already exists/), conflict: { name: 'pic.png', existing: ['pic.png'] } });
-    expect((await post(`/api/assets/${b.id}/dataset`, { dataset: 'cats', mode: 'copy', onConflict: 'merge' })).statusCode).toBe(400);
-    const k = await post(`/api/assets/${b.id}/dataset`, { dataset: 'cats', mode: 'copy', onConflict: 'rename' });
-    expect(k.json()).toMatchObject({ name: 'pic-2.png', replaced: false });
-    fs.rmSync(dsRoot, { recursive: true, force: true });
   });
 });
 

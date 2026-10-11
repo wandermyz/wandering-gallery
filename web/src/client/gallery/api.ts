@@ -115,27 +115,6 @@ export interface CaptionResponse {
 
 export type CaptionAction = 'save' | 'approve' | 'needs_regen' | 'accept_candidate' | 'discard_candidate';
 
-export interface Dataset {
-  name: string;
-  count: number;
-}
-
-export type DatasetMode = 'move' | 'copy';
-/** When the name is taken: ask (the server answers 409 with `conflict`), replace, or keep both. */
-export type DatasetConflict = 'ask' | 'replace' | 'rename';
-
-export interface DatasetResult {
-  mode: DatasetMode;
-  dataset: string;
-  created: boolean;
-  /** File name in the dataset. */
-  name: string;
-  /** An existing file of that name was replaced (it went to the trash). */
-  replaced: boolean;
-  /** After a move into a folder that is a library: the asset at its new place. */
-  asset: Asset | null;
-}
-
 export interface Page {
   items: Asset[];
   next: string | null;
@@ -154,8 +133,7 @@ export interface Query {
 }
 
 export class ApiError extends Error {
-  /** `data` is the whole JSON error body (extra details some endpoints send). */
-  constructor(message: string, readonly status: number, readonly data: Record<string, unknown> = {}) {
+  constructor(message: string, readonly status: number) {
     super(message);
   }
 }
@@ -183,10 +161,8 @@ export async function request<T>(method: string, url: string, body?: unknown, re
   }
   if (!r.ok) {
     let msg = `${r.status} ${r.statusText}`;
-    let data: Record<string, unknown> = {};
     try {
-      data = (await r.json()) as Record<string, unknown>;
-      if (typeof data.error === 'string') msg = data.error;
+      msg = ((await r.json()) as { error?: string }).error ?? msg;
     } catch {
       /* not json */
     }
@@ -195,7 +171,7 @@ export async function request<T>(method: string, url: string, body?: unknown, re
       csrf = null;
       return request<T>(method, url, body, true);
     }
-    throw new ApiError(msg, r.status, data);
+    throw new ApiError(msg, r.status);
   }
   return (await r.json()) as T;
 }
@@ -236,9 +212,6 @@ export const api = {
   favorite: (id: number, favorite: boolean) => request<Asset>('POST', `/api/assets/${id}/favorite`, { favorite }),
   rate: (id: number, rating: number) => request<Asset>('POST', `/api/assets/${id}/rating`, { rating }),
   trash: (a: Asset) => request<Asset>('POST', `/api/assets/${a.id}/trash`, { size: a.size, mtimeMs: a.mtimeMs }),
-  datasets: () => request<{ root: string; datasets: Dataset[] }>('GET', '/api/datasets'),
-  addToDataset: (a: Asset, dataset: string, mode: DatasetMode, create: boolean, onConflict: DatasetConflict = 'ask') =>
-    request<DatasetResult>('POST', `/api/assets/${a.id}/dataset`, { dataset, mode, create, onConflict, size: a.size, mtimeMs: a.mtimeMs }),
   trashList: () => request<{ retentionDays: number; items: Asset[] }>('GET', '/api/trash'),
   restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),
   purge: (id: number) => request<{ ok: true }>('POST', `/api/trash/${id}/purge`),

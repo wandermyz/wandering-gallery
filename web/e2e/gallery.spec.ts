@@ -272,67 +272,6 @@ test('caption sidecars can be edited in the details panel', async ({ page }, inf
   await page.getByRole('button', { name: 'Close details' }).click();
 });
 
-test('files can be copied or moved into a dataset with their sidecars', async ({ page }, info) => {
-  const DS = path.resolve('.tmp/e2e/datasets');
-  const set = `set-${info.project.name}`;
-  await openGallery(page, '?lib=lib&folder=portraits');
-  await openAsset(page, 'p1.jpg');
-  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
-  const section = page.locator('.info .section', { hasText: 'Dataset' });
-  await section.getByRole('button', { name: 'Add to dataset' }).click();
-  await section.getByRole('radio', { name: 'Copy' }).click();
-  await expect(section.locator('.ds-item', { hasText: 'siggraph' })).toBeVisible();
-  // Typing filters the list and offers to create a new dataset; it must not trigger viewer shortcuts.
-  await section.getByLabel('Dataset name').pressSequentially(set);
-  await expect(section.locator('.ds-item', { hasText: 'siggraph' })).toHaveCount(0);
-  await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
-  await section.getByRole('button', { name: `Create “${set}”` }).click();
-  await expect(page.locator('.toast')).toContainText(`Copied to ${set} (new)`);
-  expect(fs.readdirSync(path.join(DS, set, 'images')).sort()).toEqual(['p1.caption.json', 'p1.jpg', 'p1.txt']);
-  expect(fs.existsSync(path.join(LIB, 'portraits', 'p1.txt'))).toBe(true);
-
-  // Same name again: asks; cancel leaves things alone, keep both adds a renamed copy.
-  await section.getByRole('button', { name: 'Add to dataset' }).click();
-  await section.getByLabel('Dataset name').pressSequentially(set);
-  await section.locator('.ds-item', { hasText: set }).click();
-  const ask = section.getByRole('alertdialog', { name: 'File already exists' });
-  await expect(ask).toContainText(`p1.jpg already exists in ${set}`);
-  await ask.getByRole('button', { name: 'Cancel' }).click();
-  await expect(ask).toHaveCount(0);
-  expect(fs.readdirSync(path.join(DS, set, 'images'))).toHaveLength(3);
-  await section.locator('.ds-item', { hasText: set }).click();
-  await ask.getByRole('button', { name: 'Keep both' }).click();
-  await expect(page.locator('.toast').last()).toContainText('as p1-2.jpg');
-  expect(fs.readdirSync(path.join(DS, set, 'images')).sort()).toEqual(['p1-2.caption.json', 'p1-2.jpg', 'p1-2.txt', 'p1.caption.json', 'p1.jpg', 'p1.txt']);
-  await section.getByRole('button', { name: 'Add to dataset' }).click();
-  await section.getByLabel('Dataset name').pressSequentially(set);
-  await section.locator('.ds-item', { hasText: set }).click();
-  await ask.getByRole('button', { name: 'Replace' }).click();
-  await expect(page.locator('.toast').last()).toContainText('replaced the old one');
-  expect(fs.readdirSync(path.join(DS, set, 'images'))).toHaveLength(6);
-
-  // The copy/move choice is remembered; switch to move and it sticks.
-  await openGallery(page);
-  const target = { desktop: 'gen_00030_.png', iphone: 'gen_00031_.png', 'iphone-landscape': 'gen_00032_.png' }[info.project.name]!;
-  await openAsset(page, target);
-  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
-  await section.getByRole('button', { name: 'Add to dataset' }).click();
-  await expect(section.getByRole('radio', { name: 'Copy' })).toHaveAttribute('aria-checked', 'true');
-  await section.getByRole('radio', { name: 'Move' }).click();
-  await section.getByLabel('Dataset name').pressSequentially('sig');
-  await section.locator('.ds-item', { hasText: 'siggraph' }).click();
-  await expect(page.locator('.toast')).toContainText('Moved to siggraph');
-  await expect(page.locator('.viewer-name')).not.toHaveText(target);
-  expect(fs.existsSync(path.join(LIB, target))).toBe(false);
-  expect(fs.existsSync(path.join(DS, 'siggraph', 'images', target))).toBe(true);
-  await openGallery(page);
-  await openAsset(page, 'gen_00001_.png');
-  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
-  await section.getByRole('button', { name: 'Add to dataset' }).click();
-  await expect(section.getByRole('radio', { name: 'Move' })).toHaveAttribute('aria-checked', 'true');
-  await page.getByRole('button', { name: 'Close details' }).click();
-});
-
 test('newly generated files appear without reloading', async ({ page }, info) => {
   await openGallery(page);
   const name = `fresh_${info.project.name}.png`;

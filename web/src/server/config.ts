@@ -37,12 +37,6 @@ export interface AppConfig {
   trash: {
     retentionDays: number;
   };
-  datasets: {
-    /** Every first-level folder here is a training dataset. */
-    root: string;
-    /** Folder inside a dataset that holds its media ('' for the dataset folder itself). */
-    subfolder: string;
-  };
   thumbnails: {
     size: number;
     quality: number;
@@ -124,10 +118,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   const trash = asObject(root.trash, 'trash');
   const thumbs = asObject(root.thumbnails, 'thumbnails');
   const tools = asObject(root.tools, 'tools');
-  const datasets = asObject(root.datasets, 'datasets');
   const generate = asObject(root.generate, 'generate');
-  const subfolder = datasets.subfolder === '' ? '' : str(datasets.subfolder, 'datasets.subfolder', 'images');
-  if (subfolder && !/^[^/\\.][^/\\]*$/.test(subfolder)) throw new ConfigError('datasets.subfolder must be a single folder name');
 
   if (!Array.isArray(root.libraries) || root.libraries.length === 0) {
     throw new ConfigError('libraries must be a non-empty list');
@@ -186,10 +177,6 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     },
     trash: {
       retentionDays: num(trash.retentionDays, 'trash.retentionDays', 7, 0, 3650),
-    },
-    datasets: {
-      root: resolvePath(str(datasets.root, 'datasets.root', path.join(os.homedir(), 'Datasets'))),
-      subfolder,
     },
     thumbnails: {
       size: num(thumbs.size, 'thumbnails.size', 360, 64, 1024),

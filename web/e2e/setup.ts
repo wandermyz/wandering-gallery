@@ -11,7 +11,6 @@ async function setup() {
   const ro = path.join(root, 'readonly');
   fs.mkdirSync(lib, { recursive: true });
   fs.mkdirSync(ro, { recursive: true });
-  fs.mkdirSync(path.join(root, 'datasets', 'siggraph', 'images'), { recursive: true });
 
   await makePng(path.join(lib, 'gen_00001_.png'), {
     w: 832, h: 1216, color: '#3a4a8a',
@@ -70,8 +69,6 @@ dataDir: ./data
 cacheDir: ./cache
 scan:
   stableSeconds: 1
-datasets:
-  root: ./datasets
 generate:
   comfyui: http://127.0.0.1:2397
   comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
