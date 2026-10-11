@@ -261,8 +261,13 @@ export default function GalleryApp() {
       firstLock.current = false;
       return;
     }
-    // A hidden item open in the viewer cannot stay on screen.
-    if (!unlocked && route.asset !== null && list.items.find((a) => a.id === route.asset)?.hidden) closeViewer();
+    // A hidden library's view, or a hidden item open in the viewer, cannot stay on screen.
+    if (!unlocked && route.library && libById.get(route.library)?.hidden) {
+      nav({ view: 'gallery', library: '', folder: '', asset: null }, 'replace');
+    } else if (!unlocked && route.asset !== null) {
+      const open = list.items.find((a) => a.id === route.asset);
+      if (open && (open.hidden || open.libraryHidden)) closeViewer();
+    }
     void list.reload(true);
     void loadLibraries();
     void loadStatus();
@@ -695,6 +700,7 @@ export default function GalleryApp() {
               <Icon name="folder" />
               <span class="lib-name">
                 {l.name}
+                {l.hidden && <span class="lib-ro" title="Hidden library"><Icon name="eye-off" size={12} /></span>}
                 {!l.writable && <span class="lib-ro" title="Read-only"><Icon name="lock" size={12} /></span>}
                 {!l.available && <span class="lib-err">unavailable</span>}
               </span>

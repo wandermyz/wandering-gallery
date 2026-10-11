@@ -213,6 +213,11 @@ hidden:
   unlockMinutes: 15                      # optional, default 15
 ```
 
+A whole library can be hidden from the config with `hidden: true` on it (there's
+no button for this). While locked, it's missing from the library list, its items
+are hidden everywhere, and its id answers `404`. Once unlocked, it shows like any
+other library.
+
 The 🔒 button in the top bar then asks for the passphrase. Unlocking shows hidden
 items, with a small eye badge, mixed into the normal grid in that browser for
 15 minutes. It's a fixed time from unlocking, and the button shows the

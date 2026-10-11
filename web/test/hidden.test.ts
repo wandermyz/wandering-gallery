@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
 import { hashPassphrase } from '../src/server/unlock.js';
-import { ageAll, makeEnv, makePng, type Env } from './helpers.js';
+import { Db } from '../src/server/db.js';
+import { ageAll, makeEnv, makePng, tmpDir, type Env } from './helpers.js';
 
 const PASS = 'correct horse battery';
 let passphraseHash: string;
@@ -152,6 +153,66 @@ describe('hidden assets', () => {
     const limited = await post('/api/unlock', { passphrase: PASS });
     expect(limited.statusCode).toBe(429);
     expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('hides a whole library from the config while locked', async () => {
+    passphraseHash ??= await hashPassphrase(PASS);
+    env = await makeEnv([{ id: 'main' }, { id: 'priv', hidden: true }], { hidden: { passphraseHash } });
+    app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null });
+    await makePng(path.join(env.lib('main'), 'a.png'), { color: '#111111' });
+    await makePng(path.join(env.lib('priv'), 'sub', 'b.png'), { color: '#222222' });
+    ageAll(env.root);
+    await env.sync();
+    const b = env.db.get<{ id: number }>("SELECT id FROM assets WHERE name = 'b.png'")!.id;
+
+    const libs = async (cookie?: string) => (await get('/api/libraries', cookie)).json().libraries.map((l: { id: string }) => l.id);
+    expect(await libs()).toEqual(['main']);
+    expect(await names('/api/assets')).toEqual(['a.png']);
+    expect((await get('/api/assets?library=priv')).statusCode).toBe(404);
+    expect((await get('/api/folders?library=priv')).statusCode).toBe(404);
+    expect((await get(`/api/assets/${b}/thumb`)).statusCode).toBe(404);
+    expect((await post('/api/rescan', { library: 'priv' })).statusCode).toBe(404);
+
+    const cookie = await unlockCookie();
+    expect(await libs(cookie)).toEqual(['main', 'priv']);
+    expect((await get('/api/libraries', cookie)).json().libraries[1]).toMatchObject({ hidden: true, count: 1 });
+    expect(await names('/api/assets', cookie)).toEqual(['a.png', 'b.png']);
+    expect(await names('/api/assets?library=priv', cookie)).toEqual(['b.png']);
+    const asset = (await get(`/api/assets/${b}`, cookie)).json();
+    expect(asset).toMatchObject({ hidden: false, libraryHidden: true });
+    expect(asset.v).toMatch(/h$/);
+    const thumb = await get(`/api/assets/${b}/thumb`, cookie);
+    expect(thumb.statusCode).toBe(200);
+    expect(thumb.headers['cache-control']).not.toMatch(/immutable/);
+  });
+
+  it('keeps hidden items out of tag counts and tag covers', async () => {
+    const { pub, secret } = await setup();
+    for (const id of [pub, secret]) expect((await post(`/api/assets/${id}/tags`, { add: ['x'] })).statusCode).toBe(200);
+    await post(`/api/assets/${secret}/hidden`, { hidden: true });
+    expect((await get('/api/tags')).json().tags).toMatchObject([{ name: 'x', count: 1, cover: { id: pub } }]);
+    expect(await names('/api/assets?tag=x')).toEqual(['public.png']);
+    const cookie = await unlockCookie();
+    expect((await get('/api/tags', cookie)).json().tags).toMatchObject([{ name: 'x', count: 2, cover: { id: pub } }]);
+    expect((await post(`/api/assets/${secret}/tags`, { add: ['y'] })).statusCode).toBe(404);
+  });
+
+  it('upgrades a database from the pre-rebase hidden-items v4', () => {
+    const file = path.join(tmpDir(), 'old.db');
+    const old = new Db(file);
+    // Simulate the old branch's v4: hidden column, no tags tables.
+    old.sql.exec('DROP TABLE asset_tags; DROP TABLE tags; PRAGMA user_version = 4');
+    old.run("INSERT INTO assets (library_id, rel_path, folder, name, kind, size, mtime_ms, fingerprint, first_seen_ms, hidden) VALUES ('m', 'a.png', '', 'a.png', 'image', 1, 1, 'f', 1, 1)");
+    old.close();
+    const db = new Db(file);
+    expect(db.get<{ user_version: number }>('PRAGMA user_version')!.user_version).toBe(5);
+    expect(db.get<{ hidden: number }>('SELECT hidden FROM assets')!.hidden).toBe(1);
+    expect(db.all('SELECT * FROM tags')).toEqual([]);
+    db.close();
+  });
+
+  it('refuses a hidden library without a passphrase', async () => {
+    await expect(makeEnv([{ id: 'priv', hidden: true }])).rejects.toThrow(/needs hidden.passphraseHash/);
   });
 
   it('cannot be unlocked when no passphrase is configured', async () => {

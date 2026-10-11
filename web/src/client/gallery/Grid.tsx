@@ -193,7 +193,7 @@ function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: 
         </span>
       )}
       <MiniRating value={a.rating} />
-      {a.hidden && (
+      {(a.hidden || a.libraryHidden) && (
         <span class="badge-hidden" aria-label="Hidden">
           <Icon name="eye-off" size={13} />
         </span>

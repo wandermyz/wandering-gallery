@@ -4,6 +4,8 @@ export interface Library {
   writable: boolean;
   recursive: boolean;
   showInAll: boolean;
+  /** Only listed while unlocked. */
+  hidden: boolean;
   count: number;
   images: number;
   videos: number;
@@ -37,6 +39,8 @@ export interface Asset {
   rating: number;
   /** Left out of lists, and refused by the server, unless this browser is unlocked. */
   hidden: boolean;
+  /** Its library is hidden in the config (so it is hidden whatever `hidden` says). */
+  libraryHidden: boolean;
   status: 'ready' | 'missing' | 'trashed';
   trashedAtMs: number | null;
   /** Caption sidecar status ('unknown' for an unreadable json), null when there is no caption. */

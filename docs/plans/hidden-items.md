@@ -14,6 +14,11 @@ refused by the API, until the browser is unlocked with a passphrase. An unlock l
   `hidden` column in `assets`, so files can be anywhere and are never touched.
   Like favorite and rating, it follows a file that's moved or renamed (the same
   row is reused), including copy-then-delete moves (`adoptIntoCopy`).
+- **Whole libraries can be hidden** with `hidden: true` on the library in the config
+  (no UI). While locked, the library is missing from `/api/libraries`, its id is
+  answered with 404 (assets, folders, rescan), and all its assets count as hidden.
+  Live-update events don't name it. A hidden library needs a passphrase in the
+  config, or the config is rejected. Its assets carry `libraryHidden: true`.
 - **Mixed into the normal grid when unlocked**, with a small eye badge.
 - **Hide any time, unhide only when unlocked.** A locked browser can't even see the
   item.

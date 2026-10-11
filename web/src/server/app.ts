@@ -35,7 +35,7 @@ const PREVIEW_PIXELS = 3000 * 3000;
 const PREVIEW_BYTES = 15 * 1024 * 1024;
 
 /** Public shape of an asset sent to the browser. */
-function assetJson(r: AssetRow) {
+function assetJson(r: AssetRow, hiddenLibs: ReadonlySet<string>) {
   return {
     id: r.id,
     library: r.library_id,
@@ -59,6 +59,7 @@ function assetJson(r: AssetRow) {
     favorite: !!r.favorite,
     rating: r.rating,
     hidden: !!r.hidden,
+    libraryHidden: hiddenLibs.has(r.library_id),
     status: r.status,
     trashedAtMs: r.trashed_at_ms,
     caption: (r.caption_status ?? null) as string | null,
@@ -67,7 +68,7 @@ function assetJson(r: AssetRow) {
     tags: r.tag_names ? r.tag_names.split(TAG_SEP) : [],
     // Thumbnail URLs embed the fingerprint so browsers can cache them forever. Hiding
     // changes the URL, so a hidden asset never reuses a long-lived cache entry.
-    v: r.fingerprint.slice(0, 12) + (r.hidden ? 'h' : ''),
+    v: r.fingerprint.slice(0, 12) + (r.hidden || hiddenLibs.has(r.library_id) ? 'h' : ''),
     needsPreview: r.kind === 'image' && !r.animated &&
       ((r.width ?? 0) * (r.height ?? 0) > PREVIEW_PIXELS || r.size > PREVIEW_BYTES || r.name.toLowerCase().endsWith('.avif')),
   };
@@ -145,32 +146,40 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return reply.code(500).send({ error: 'internal error' });
   });
 
-  const libState = (id: string) => {
+  // ---- Hidden assets ---------------------------------------------------------
+  // Hidden assets, and every asset of a hidden library, are left out of every list
+  // and answer 404 everywhere, unless the browser holds a valid unlock cookie (see
+  // unlock.ts). Hidden libraries are also left out of the library list.
+  const unlock = new Unlock(cfg.hidden.passphraseHash, cfg.hidden.unlockMinutes * 60_000);
+  const hiddenLibs: ReadonlySet<string> = new Set(cfg.libraries.filter((l) => l.hidden).map((l) => l.id));
+  const toJson = (r: AssetRow) => assetJson(r, hiddenLibs);
+  const isHidden = (r: Pick<AssetRow, 'hidden' | 'library_id'>) => !!r.hidden || hiddenLibs.has(r.library_id);
+  // Library ids are config-validated ([a-z0-9_-]), so they are safe to inline.
+  const notHidden = hiddenLibs.size
+    ? `assets.hidden = 0 AND assets.library_id NOT IN (${[...hiddenLibs].map((id) => `'${id}'`).join(',')})`
+    : 'assets.hidden = 0';
+  /** SQL condition (on `assets`) for what this request may see. */
+  const visible = (req: FastifyRequest) => (unlock.isUnlocked(req) ? '1' : notHidden);
+
+  /** A library this request may see; hidden ones are unknown while locked. */
+  const libState = (id: string, req: FastifyRequest | null) => {
     const s = indexer.libs.get(id);
-    if (!s) throw new HttpError('unknown library', 404);
+    if (!s || (req && hiddenLibs.has(id) && !unlock.isUnlocked(req))) throw new HttpError('unknown library', 404);
     return s;
   };
-
-  // ---- Hidden assets ---------------------------------------------------------
-  // Hidden assets are left out of every list, and answer 404 everywhere, unless the
-  // browser holds a valid unlock cookie (see unlock.ts).
-  const unlock = new Unlock(cfg.hidden.passphraseHash, cfg.hidden.unlockMinutes * 60_000);
-  /** SQL condition (on `assets`) for what this request may see. */
-  const visible = (req: FastifyRequest) => (unlock.isUnlocked(req) ? '1' : 'assets.hidden = 0');
 
   const getAsset = (req: FastifyRequest, statuses: string[] = ['ready']) => {
     const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
     const row = db.asset(id);
-    if (!row || !statuses.includes(row.status) || (row.hidden && !unlock.isUnlocked(req))) throw new HttpError('asset not found', 404);
+    if (!row || !statuses.includes(row.status) || (isHidden(row) && !unlock.isUnlocked(req))) throw new HttpError('asset not found', 404);
     return row;
   };
 
   /** For routes that look the asset up themselves: 404 for a hidden one while locked. */
   const visibleId = (req: FastifyRequest) => {
     const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
-    if (db.get<{ hidden: number }>('SELECT hidden FROM assets WHERE id = ?', id)?.hidden && !unlock.isUnlocked(req)) {
-      throw new HttpError('asset not found', 404);
-    }
+    const row = db.get<{ hidden: number; library_id: string }>('SELECT hidden, library_id FROM assets WHERE id = ?', id);
+    if (row && isHidden(row) && !unlock.isUnlocked(req)) throw new HttpError('asset not found', 404);
     return id;
   };
 
@@ -179,7 +188,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
    * unlock that fetched it expires, so the browser cannot show it after relocking.
    */
   const cacheFor = (req: FastifyRequest, row: AssetRow, maxAge: number, immutable = false) => {
-    if (!row.hidden) return `private, max-age=${maxAge}${immutable ? ', immutable' : ''}`;
+    if (!isHidden(row)) return `private, max-age=${maxAge}${immutable ? ', immutable' : ''}`;
     const left = Math.floor(((unlock.until(req) ?? 0) - Date.now()) / 1000);
     return left > 0 ? `private, max-age=${Math.min(maxAge, left)}` : 'no-store';
   };
@@ -191,7 +200,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       if (!row.trash_path || !isInside(trash.root, p)) throw new HttpError('file not found', 404);
       return p;
     }
-    return resolveInside(libState(row.library_id).cfg.path, row.rel_path);
+    return resolveInside(libState(row.library_id, null).cfg.path, row.rel_path);
   };
 
   // ---- Session / status ----------------------------------------------------
@@ -227,12 +236,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
          FROM assets WHERE status = 'ready' AND ${visible(req)} GROUP BY library_id`,
       ).map((r) => [r.library_id, r]),
     );
+    const unlocked = unlock.isUnlocked(req);
     return {
-      libraries: cfg.libraries.map((l) => {
+      libraries: cfg.libraries.filter((l) => unlocked || !l.hidden).map((l) => {
         const s = indexer.libs.get(l.id)!;
         const c = counts.get(l.id);
         return {
-          id: l.id, name: l.name, writable: l.writable, recursive: l.recursive, showInAll: l.showInAll,
+          id: l.id, name: l.name, writable: l.writable, recursive: l.recursive, showInAll: l.showInAll, hidden: l.hidden,
           count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0,
           available: !!s.realRoot, error: s.error, scanning: s.scanning, lastScanMs: s.lastScanMs,
         };
@@ -255,7 +265,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get('/api/folders', async (req) => {
     const q = req.query as Record<string, string | undefined>;
-    const lib = libState(q.library ?? '').cfg;
+    const lib = libState(q.library ?? '', req).cfg;
     const parent = checkFolder(q.folder ?? '');
     const prefix = parent ? parent + '/' : '';
     // '/' sorts just before '0', so [prefix, prefix-with-'0') covers all descendants.
@@ -280,7 +290,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Cover image: newest asset in each folder subtree, never a hidden one (even when unlocked).
     const withCover = folders.map((f) => {
       const cover = db.get<AssetRow>(
-        `SELECT * FROM assets WHERE status = 'ready' AND hidden = 0 AND library_id = ? AND (folder = ? OR (folder >= ? AND folder < ?))
+        `SELECT * FROM assets WHERE status = 'ready' AND ${notHidden} AND library_id = ? AND (folder = ? OR (folder >= ? AND folder < ?))
          ORDER BY mtime_ms DESC, id DESC LIMIT 1`,
         lib.id, f.path, f.path + '/', f.path + '0');
       return { ...f, cover: cover ? { id: cover.id, v: cover.fingerprint.slice(0, 12) } : null };
@@ -294,7 +304,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const params: (string | number)[] = [];
     if (q.library) {
       where.push('library_id = ?');
-      params.push(libState(q.library).cfg.id);
+      params.push(libState(q.library, req).cfg.id);
       const folder = checkFolder(q.folder ?? '');
       const recursive = q.recursive !== '0';
       if (folder && recursive) {
@@ -356,7 +366,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       )!.n;
     }
     return {
-      items: page.map(assetJson),
+      items: page.map(toJson),
       next: more && last ? `${last.mtime_ms}_${last.id}` : null,
       total,
     };
@@ -365,7 +375,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/api/assets/:id', async (req) => {
     const row = getAsset(req, ['ready', 'trashed']);
     const lib = indexer.libs.get(row.library_id);
-    return { ...assetJson(row), libraryName: lib?.cfg.name ?? row.library_id, writable: !!lib?.cfg.writable };
+    return { ...toJson(row), libraryName: lib?.cfg.name ?? row.library_id, writable: !!lib?.cfg.writable };
   });
 
   app.get('/api/assets/:id/metadata', async (req) => {
@@ -483,7 +493,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { favorite?: unknown };
     if (typeof body.favorite !== 'boolean') throw new HttpError('favorite must be true or false', 400);
     db.setFavorite(row.id, body.favorite);
-    return assetJson(db.asset(row.id)!);
+    return toJson(db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/rating', async (req) => {
@@ -491,18 +501,19 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { rating?: unknown };
     const rating = intParam(body.rating, 'rating', 0, 5);
     db.setRating(row.id, rating);
-    return assetJson(db.asset(row.id)!);
+    return toJson(db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/tags', async (req) => {
     const row = getAsset(req, ['ready']);
     tags.update(row.id, (req.body ?? {}) as { add?: unknown; remove?: unknown });
-    return assetJson(db.asset(row.id)!);
+    return toJson(db.asset(row.id)!);
   });
 
-  app.get('/api/tags', async (_req, reply) => {
+  app.get('/api/tags', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return { tags: tags.list() };
+    // Covers are never hidden items, as for folders.
+    return { tags: tags.list(visible(req), notHidden) };
   });
 
   app.post('/api/tags/:id/rename', async (req) => {
@@ -522,7 +533,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { hidden?: unknown };
     if (typeof body.hidden !== 'boolean') throw new HttpError('hidden must be true or false', 400);
     db.setHidden(row.id, body.hidden);
-    return assetJson(db.asset(row.id)!);
+    return toJson(db.asset(row.id)!);
   });
 
   app.post('/api/assets/:id/trash', async (req) => {
@@ -532,7 +543,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       size: typeof body.size === 'number' ? body.size : undefined,
       mtimeMs: typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined,
     };
-    return assetJson(await trash.trash(id, expected));
+    return toJson(await trash.trash(id, expected));
   });
 
   app.get('/api/trash', async (req) => {
@@ -540,7 +551,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return {
       retentionDays: cfg.trash.retentionDays,
       items: rows.map((r) => ({
-        ...assetJson(r),
+        ...toJson(r),
         libraryName: indexer.libs.get(r.library_id)?.cfg.name ?? r.library_id,
         expiresAtMs: (r.trashed_at_ms ?? 0) + cfg.trash.retentionDays * 86_400_000,
       })),
@@ -549,7 +560,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post('/api/trash/:id/restore', async (req) => {
     const id = visibleId(req);
-    return assetJson(await trash.restore(id));
+    return toJson(await trash.restore(id));
   });
 
   app.post('/api/trash/:id/purge', async (req) => {
@@ -562,7 +573,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const body = (req.body ?? {}) as { library?: unknown };
     if (body.library !== undefined) {
       if (typeof body.library !== 'string') throw new HttpError('library must be a string', 400);
-      void indexer.scanLibrary(libState(body.library).cfg.id);
+      void indexer.scanLibrary(libState(body.library, req).cfg.id);
     } else {
       void indexer.scanAll();
     }
@@ -573,21 +584,24 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   // ---- Live updates (Server-Sent Events) ------------------------------------------
 
-  const clients = new Set<FastifyReply>();
+  // Each stream keeps its request, so hidden library ids only go to unlocked browsers.
+  const clients = new Map<FastifyReply, FastifyRequest>();
   const onChange = (ev: ChangeEvent) => {
     const data = `event: change\ndata: ${JSON.stringify(ev)}\n\n`;
-    for (const c of clients) c.raw.write(data);
+    const shown = { ...ev, libraries: ev.libraries.filter((id) => !hiddenLibs.has(id)) };
+    const locked = `event: change\ndata: ${JSON.stringify(shown)}\n\n`;
+    for (const [c, req] of clients) c.raw.write(hiddenLibs.size && !unlock.isUnlocked(req) ? locked : data);
   };
   indexer.on('change', onChange);
   const ping = setInterval(() => {
-    for (const c of clients) c.raw.write(': ping\n\n');
+    for (const c of clients.keys()) c.raw.write(': ping\n\n');
   }, 25_000);
   ping.unref();
   // preClose: end live streams before the server waits for open connections to drain.
   app.addHook('preClose', async () => {
     clearInterval(ping);
     indexer.off('change', onChange);
-    for (const c of clients) c.raw.end();
+    for (const c of clients.keys()) c.raw.end();
     clients.clear();
   });
 
@@ -600,7 +614,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       'X-Accel-Buffering': 'no',
     });
     reply.raw.write('retry: 5000\n\n');
-    clients.add(reply);
+    clients.set(reply, req);
     req.raw.on('close', () => clients.delete(reply));
   });
 

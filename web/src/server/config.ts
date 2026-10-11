@@ -13,6 +13,8 @@ export interface LibraryConfig {
   writable: boolean;
   /** Include this library in the cross-library views (All media, Favorites). */
   showInAll: boolean;
+  /** Treat every asset in it as hidden: the library only shows while unlocked. */
+  hidden: boolean;
 }
 
 export interface AppConfig {
@@ -152,6 +154,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       recursive: bool(lib.recursive, `libraries[${i}].recursive`, true),
       writable: bool(lib.writable, `libraries[${i}].writable`, false),
       showInAll: bool(lib.showInAll, `libraries[${i}].showInAll`, true),
+      hidden: bool(lib.hidden, `libraries[${i}].hidden`, false),
     };
   });
 
@@ -169,6 +172,9 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   } else if (seen.has('comfyui')) {
     outputLibrary = 'comfyui';
   }
+
+  const hiddenLib = libraries.find((l) => l.hidden);
+  if (hiddenLib && !passphraseHash) throw new ConfigError(`library "${hiddenLib.id}" is hidden, which needs hidden.passphraseHash`);
 
   const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   const xdgData = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');

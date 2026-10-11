@@ -27,6 +27,8 @@ libraries:
     recursive: true
     writable: false
     showInAll: false       # keep out of "All media" and "Favorites" (default true)
+    # hidden: true         # only listed (and its files only served) while unlocked;
+    #                      # needs hidden.passphraseHash below
 
   # Folders on removable/mounted disks are fine: while unmounted the library shows as
   # unavailable and keeps its index, ratings and favorites; it is picked up again

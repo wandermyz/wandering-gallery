@@ -36,16 +36,21 @@ function nameList(v: unknown, field: string): string[] {
 export class Tags {
   constructor(readonly db: Db) {}
 
-  list(): TagInfo[] {
+  /**
+   * `countable` and `coverable` are SQL conditions on `assets` (for hidden items: what
+   * this browser may count, and what may be a cover).
+   */
+  list(countable = '1', coverable = '1'): TagInfo[] {
+    const cover = (alias: string) => coverable.replaceAll('assets.', `${alias}.`);
     const rows = this.db.all<{ id: number; name: string; n: number; cover_id: number | null; cover_fp: string | null }>(
       `SELECT tags.id, tags.name, count(a.id) AS n,
          (SELECT c.id FROM asset_tags ct JOIN assets c ON c.id = ct.asset_id
-          WHERE ct.tag_id = tags.id AND c.status = 'ready' ORDER BY c.mtime_ms DESC, c.id DESC LIMIT 1) AS cover_id,
+          WHERE ct.tag_id = tags.id AND c.status = 'ready' AND ${cover('c')} ORDER BY c.mtime_ms DESC, c.id DESC LIMIT 1) AS cover_id,
          (SELECT c.fingerprint FROM asset_tags ct JOIN assets c ON c.id = ct.asset_id
-          WHERE ct.tag_id = tags.id AND c.status = 'ready' ORDER BY c.mtime_ms DESC, c.id DESC LIMIT 1) AS cover_fp
+          WHERE ct.tag_id = tags.id AND c.status = 'ready' AND ${cover('c')} ORDER BY c.mtime_ms DESC, c.id DESC LIMIT 1) AS cover_fp
        FROM tags
        LEFT JOIN asset_tags at ON at.tag_id = tags.id
-       LEFT JOIN assets a ON a.id = at.asset_id AND a.status = 'ready'
+       LEFT JOIN assets a ON a.id = at.asset_id AND a.status = 'ready' AND ${countable.replaceAll('assets.', 'a.')}
        GROUP BY tags.id
        ORDER BY tags.name COLLATE NOCASE`,
     );
