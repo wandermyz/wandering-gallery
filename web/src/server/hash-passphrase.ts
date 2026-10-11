@@ -10,27 +10,34 @@ async function readPassphrase(): Promise<string> {
     for await (const chunk of stdin) text += chunk;
     return text.replace(/\r?\n$/, '');
   }
-  const ask = async (prompt: string) => {
+  // A 'data' listener, not `for await`: leaving a for-await loop early destroys stdin,
+  // and the second prompt would then fail with "The operation was aborted".
+  const ask = (prompt: string) => new Promise<string>((resolve) => {
     process.stderr.write(prompt);
-    stdin.setRawMode(true);
-    stdin.resume();
     let text = '';
-    try {
-      for await (const chunk of stdin) {
-        for (const ch of chunk.toString('utf8')) {
-          if (ch === '\r' || ch === '\n') return text;
-          if (ch === '\u0003') process.exit(130);
-          if (ch === '\u007f') text = text.slice(0, -1);
-          else text += ch;
-        }
-      }
-      return text;
-    } finally {
+    const done = () => {
+      stdin.off('data', onData);
       stdin.setRawMode(false);
       stdin.pause();
       process.stderr.write('\n');
-    }
-  };
+      resolve(text);
+    };
+    const onData = (chunk: Buffer) => {
+      for (const ch of chunk.toString('utf8')) {
+        if (ch === '\r' || ch === '\n') return done();
+        if (ch === '\u0003') {
+          stdin.setRawMode(false);
+          process.stderr.write('\n');
+          process.exit(130);
+        }
+        if (ch === '\u007f' || ch === '\b') text = text.slice(0, -1);
+        else text += ch;
+      }
+    };
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+  });
   const first = await ask('Passphrase: ');
   if (first !== (await ask('Again: '))) throw new Error('the passphrases do not match');
   return first;
