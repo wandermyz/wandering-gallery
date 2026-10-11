@@ -10,7 +10,7 @@ import { registerGenerate } from './generate/routes.js';
 import type { ComfyClient } from './generate/comfy.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { videoPlayability, mediaType } from './media.js';
-import type { GenerationSummary } from './metadata/comfyui.js';
+import { unquoteJsonString, type GenerationSummary } from './metadata/comfyui.js';
 import { checkFolder, HttpError, isInside, resolveInside } from './paths.js';
 import { checkTagName, Tags } from './tags.js';
 import { ensurePreview, ensureThumb } from './thumbs.js';
@@ -393,6 +393,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     try {
       summary = m?.summary_json ? JSON.parse(m.summary_json) : null;
       extra = m?.extra_json ? JSON.parse(m.extra_json) : {};
+      for (const k of Object.keys(extra)) extra[k] = unquoteJsonString(extra[k]);
     } catch {
       /* corrupt row: fall through with what we have */
     }

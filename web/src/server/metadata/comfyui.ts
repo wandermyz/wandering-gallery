@@ -88,6 +88,18 @@ export function parseJsonLoose(value: unknown): unknown {
   return v;
 }
 
+/** Unwraps a value stored as a JSON string literal (e.g. `"\\u5973"`) for display; other text is returned as is. */
+export function unquoteJsonString(value: string): string {
+  const t = value.trim();
+  if (t.length < 2 || !t.startsWith('"') || !t.endsWith('"')) return value;
+  try {
+    const v = JSON.parse(t);
+    return typeof v === 'string' ? v : value;
+  } catch {
+    return value;
+  }
+}
+
 export function asApiPrompt(v: unknown): ApiPrompt | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
   const out: ApiPrompt = {};
