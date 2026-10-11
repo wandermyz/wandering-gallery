@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { summarize, summarizeA1111, workflowToPseudoPrompt, parseJsonLoose } from '../src/server/metadata/comfyui.js';
+import { summarize, summarizeA1111, workflowToPseudoPrompt, parseJsonLoose, unquoteJsonString } from '../src/server/metadata/comfyui.js';
 import { extract } from '../src/server/metadata/extract.js';
 import { readPngInfo, readExifStrings } from '../src/server/metadata/readers.js';
 import { FFPROBE, fixture, hasFfmpeg, makeExif, makePng, makeVideo, makeWebp, tmpDir } from './helpers.js';
@@ -93,6 +93,19 @@ describe('ComfyUI API prompt interpretation', () => {
     expect(s.params).toMatchObject({ steps: 20, sampler: 'DPM++ 2M', cfg: 7, seed: 5, width: 512, height: 768 });
     expect(s.loras).toEqual([{ name: 'cute', strengthModel: 0.7 }]);
     expect(s.models).toEqual([{ kind: 'checkpoint', name: 'dream' }]);
+  });
+});
+
+describe('unquoteJsonString', () => {
+  it('decodes JSON string literals such as ComfyUI extra_pnginfo values', () => {
+    expect(unquoteJsonString('"\\u4e00\\u53ea\\u5c11\\u5973"')).toBe('一只少女');
+    expect(unquoteJsonString('"plain"')).toBe('plain');
+  });
+
+  it('leaves other text untouched', () => {
+    expect(unquoteJsonString('hello')).toBe('hello');
+    expect(unquoteJsonString('"unterminated')).toBe('"unterminated');
+    expect(unquoteJsonString('"a" and "b"')).toBe('"a" and "b"');
   });
 });
 
