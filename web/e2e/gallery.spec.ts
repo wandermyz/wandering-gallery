@@ -87,6 +87,26 @@ test('gallery shows a responsive grid with day headers, badges and folders', asy
   await expect(page.locator('.cell[aria-label="gen_00001_.png"]')).toBeVisible();
 });
 
+test('filename filter narrows the current view without new requests', async ({ page }) => {
+  await openGallery(page, '?lib=lib&folder=portraits');
+  await expect(page.locator('.cell')).toHaveCount(2);
+  let requests = 0;
+  page.on('request', (r) => { if (r.url().includes('/api/assets')) requests++; });
+  await page.getByRole('button', { name: 'Filter by filename' }).click();
+  const input = page.getByRole('searchbox', { name: 'Filter by filename' });
+  await expect(input).toBeFocused();
+  await input.fill('P2');
+  await expect(page.locator('.cell')).toHaveCount(1);
+  await expect(page.locator('.cell[aria-label="p2.jpg"]')).toBeVisible();
+  await expect(page.locator('.topbar-sub')).toContainText('1 match');
+  await input.fill('nope');
+  await expect(page.getByText('No loaded filenames match')).toBeVisible();
+  await input.press('Escape');
+  await expect(input).toBeHidden();
+  await expect(page.locator('.cell')).toHaveCount(2);
+  expect(requests).toBe(0);
+});
+
 test('scrolling reaches the oldest items and pagination cursors are consistent', async ({ page, request }) => {
   // API pagination with a small page size returns every item exactly once.
   const seen: number[] = [];
