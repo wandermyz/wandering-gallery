@@ -49,6 +49,21 @@ def main(argv: list[str] | None = None) -> int:
                    help="comma-separated statuses to include (default: approved)")
     p.add_argument("-n", "--dry-run", action="store_true")
 
+    p = sub.add_parser("train", help="train a LoRA with kohya sd-scripts from an export")
+    p.add_argument("dataset")
+    p.add_argument("--export", required=True, help="export name (exports/<name>)")
+    p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                   help="override a train.params value, e.g. --set learning_rate=5e-5 (repeatable)")
+    p.add_argument("--name", help="run name (default: next rNNN)")
+    p.add_argument("-n", "--dry-run", action="store_true", help="prepare data and write configs, don't train")
+
+    p = sub.add_parser("eval", help="render the eval prompts for every checkpoint × strength of a run")
+    p.add_argument("dataset")
+    p.add_argument("run")
+    p.add_argument("--epochs", help="comma-separated epochs (default: all checkpoints)")
+    p.add_argument("--strengths", help="comma-separated LoRA strengths (default: train.eval.strengths)")
+    p.add_argument("-n", "--dry-run", action="store_true")
+
     p = sub.add_parser("compare", help="run several models on sample images -> HTML report")
     p.add_argument("dataset")
     p.add_argument("--models", help="comma-separated runs, e.g. qwen3.5-4b,joycaption:descriptive,wd14")
@@ -97,6 +112,13 @@ def main(argv: list[str] | None = None) -> int:
         pipeline.mark(ds, a.images, a.status)
     elif a.cmd == "export":
         pipeline.export(ds, a.name, [s.strip() for s in a.include.split(",")], a.dry_run)
+    elif a.cmd == "train":
+        from .train import train
+        return train(ds, a.export, a.set, a.name, a.dry_run)
+    elif a.cmd == "eval":
+        from .evaluate import evaluate
+        return evaluate(ds, a.run, [int(x) for x in a.epochs.split(",")] if a.epochs else None,
+                        [float(x) for x in a.strengths.split(",")] if a.strengths else None, a.dry_run)
     elif a.cmd == "prompt":
         from .prompt import build_prompt
         print(build_prompt(ds))

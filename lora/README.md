@@ -9,7 +9,8 @@ Everything runs locally; no images leave the machine.
   description, raw model output, provenance, review status) next to every image.
 - Review: in [wandering-gallery](https://github.com/wandermyz/wandering-gallery)
   (Caption section of the info panel: edit / approve / regenerate / accept candidate).
-- LoRA training itself is out of scope.
+- Training: `wlora train` runs [kohya sd-scripts](https://github.com/kohya-ss/sd-scripts) on an export
+  (see [Training](#training)).
 
 The sidecar contract shared with the gallery is in [docs/sidecar-format.md](docs/sidecar-format.md).
 
@@ -19,7 +20,7 @@ Requires an NVIDIA GPU (tested: RTX 5070 Ti 16 GB, driver CUDA 13.x) and [uv](ht
 The environment is isolated in `.venv` (PyTorch cu130 wheels); ComfyUI and system CUDA are untouched.
 
 ```sh
-git clone git@github.com:wandermyz/wandering-lora.git && cd wandering-lora
+cd lora                                     # in a wandering-gallery checkout
 UV_PYTHON_PREFERENCE=only-managed uv sync   # managed Python ships headers needed by Triton kernels
 .venv/bin/hf download Qwen/Qwen3.5-4B       # ~9 GB; weights go to ~/.cache/huggingface
 # optional, for `wlora compare`:
@@ -43,7 +44,7 @@ wlora run ~/Datasets/siggraph                # picks up images marked "Regenerat
 wlora export ~/Datasets/siggraph --name v1   # approved images + .txt -> exports/v1/
 ```
 
-Other commands: `wlora compare` (side-by-side HTML of several models on sample images),
+Other commands: `wlora train` (see below), `wlora compare` (side-by-side HTML of several models on sample images),
 `wlora prompt` (show the model prompt), `wlora models`, `wlora mark <ds> approved|needs_regen <images…>`.
 
 ### Dataset layout
@@ -56,6 +57,7 @@ Other commands: `wlora compare` (side-by-side HTML of several models on sample i
     IMG_5232.txt          # "siggraph, cat, no humans, animal focus, full body, from above, on back, ..."
     IMG_5232.caption.json
   exports/<name>/         # training-ready copies: image + .txt + manifest.jsonl
+  train/data/, train/runs/<run>/   # `wlora train`
   .wlora/                 # wlora.log, compare reports
 ```
 
@@ -76,6 +78,40 @@ Like HEIC, the original raw is deleted after conversion with `ingest.mode: move`
 gallery. `--force` on untouched `generated` captions replaces them (old caption kept in
 `previous`). The pipeline re-reads sidecars right before writing, and the gallery rejects
 stale saves with HTTP 409, so there is no silent last-writer-wins.
+
+## Training
+
+```sh
+git clone https://github.com/kohya-ss/sd-scripts ~/Codebase/sd-scripts && cd ~/Codebase/sd-scripts
+UV_PYTHON_PREFERENCE=only-managed uv venv -p 3.12 .venv
+uv pip install -p .venv/bin/python torch torchvision --index-url https://download.pytorch.org/whl/cu130
+uv pip install -p .venv/bin/python -r requirements.txt
+
+wlora train ~/Datasets/siggraph --export v1                       # run r001 with train.params
+wlora train ~/Datasets/siggraph --export v1 --set learning_rate=5e-5 --set network_dim=32
+```
+
+Paths and default parameters are under `train:` in `dataset.yaml`. Before training,
+ComfyUI is asked to unload its models (`POST /free`); it keeps running. The export is
+copied to `train/data/` (EXIF orientation applied, ≤ 2 MP, `train.params.style_tags`
+inserted after the trigger and class tags so the photo look doesn't go into the trigger).
+Each run gets `train/runs/<run>/` (`params.json`, generated `config.toml` / `dataset.toml`,
+`train.log`, `status.json`, `output/*.safetensors` every `save_every_n_epochs`), and
+`output/` is linked into ComfyUI as `models/loras/wlora/<dataset>/<run>/`. Use the LoRA with
+`LoraLoaderModelOnly` on WAI-Illustrious, without the style tags in the prompt.
+
+```sh
+wlora eval ~/Datasets/siggraph r001                  # every checkpoint × train.eval.strengths
+wlora eval ~/Datasets/siggraph r001 --epochs 10,12 --strengths 1.0
+```
+
+`wlora eval` renders `train.eval.prompts` (fixed seeds) through ComfyUI with
+`comfyui/workflows/wai-illustrious-lora.api.json`, plus one image without the LoRA per
+prompt. Images go to `ComfyUI/output/wlora/<dataset>/<run>/` (gallery assets; the PNG
+records run, epoch and strength) with one contact sheet per prompt in `sheets/`. It
+resumes where it stopped and re-renders images whose prompt changed.
+
+Plan for evaluation and semi-automatic tuning: [docs/plans/lora-tuning.md](../docs/plans/lora-tuning.md).
 
 ## Captions
 

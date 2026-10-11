@@ -62,6 +62,10 @@ class Dataset:
         return self._path("state")
 
     @property
+    def train_dir(self) -> Path:
+        return self._path("train")
+
+    @property
     def subject(self) -> dict:
         return self.cfg["subject"]
 

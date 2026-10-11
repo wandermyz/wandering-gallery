@@ -120,7 +120,59 @@ ingest:
   raw:                         # CR3, CR2, NEF, ARW, DNG, RAF, ...
     source: embedded           # embedded (camera-rendered full-size preview) | develop (LibRaw demosaic)
 
+train:                         # `wlora train`, see docs/plans/lora-tuning.md
+  sd_scripts: ~/Codebase/sd-scripts                    # kohya sd-scripts checkout with its own .venv
+  base_model: ~/Codebase/ComfyUI/models/checkpoints/waiIllustriousSDXL_v170.safetensors
+  comfyui: http://127.0.0.1:8188                       # asked to unload its models before training
+  comfyui_loras: ~/Codebase/ComfyUI/models/loras       # run outputs are linked in as wlora/<dataset>/<run>; null = off
+  params:                      # defaults; override per run with `--set key=value`
+    resolution: 1024           # buckets from resolution/2 to resolution*2
+    max_pixels: 2097152        # training copies are downscaled to at most this many pixels
+    network_dim: 16
+    network_alpha: 8
+    learning_rate: 1.0e-4
+    optimizer: AdamW8bit
+    lr_scheduler: cosine
+    lr_warmup_ratio: 0.05
+    batch_size: 2
+    epochs: 16
+    save_every_n_epochs: 2
+    num_repeats: 1
+    min_snr_gamma: 5
+    noise_offset: 0
+    flip_aug: false            # off: markings are asymmetric
+    # Added after trigger + class tags; they absorb the photo look so the trigger doesn't.
+    style_tags: ["photo (medium)", "realistic"]
+    # Added after the style tags to images whose eyes are open and visible (from the
+    # classification), and to every eval prompt; e.g. ["orange eyes"] when the base
+    # model's default eye colour wins over the trigger word.
+    eye_tags: []
+    # Either one turns off text-encoder output caching (slower, more VRAM).
+    shuffle_caption: false
+    keep_tokens: 2             # with shuffle_caption: tags kept in front (trigger, class)
+    caption_dropout_rate: 0
+    seed: 42
+  eval:                        # `wlora eval`: fixed prompts/seeds rendered for every checkpoint × strength
+    comfyui_output: ~/Codebase/ComfyUI/output     # images land in wlora/<dataset>/<run>/
+    workflow: null             # default: <repo>/comfyui/workflows/wai-illustrious-lora.api.json
+    strengths: [0.6, 0.8, 1.0]
+    seeds: [1]
+    size: [832, 1216]
+    steps: 28
+    cfg: 5
+    quality_tags: "masterpiece, best quality, amazing quality"
+    negative_prompt: "photo (medium), realistic, photorealistic, 3d, worst quality, low quality, lowres, bad anatomy, jpeg artifacts, watermark, signature, text"
+    # {trigger} is replaced by the trigger word; each prompt is also rendered without
+    # it (without_trigger: false to skip) to see how much the LoRA leaks into normal prompts.
+    prompts:
+      - {id: home, prompt: "{trigger}, cat, no humans, animal focus, full body, sitting, windowsill, indoors, sunlight"}
+      - {id: closeup, prompt: "{trigger}, cat, no humans, animal focus, close-up, looking at viewer"}
+      - {id: forest, prompt: "{trigger}, cat, no humans, animal focus, full body, walking, fantasy forest, glowing mushrooms, night"}
+      - {id: scarf, prompt: "{trigger}, cat, no humans, animal focus, upper body, red scarf, snow, outdoors"}
+      - {id: chibi, prompt: "{trigger}, cat, chibi, no humans, white background"}
+
 paths:
   images: images
   exports: exports
   state: .wlora
+  train: train
