@@ -42,11 +42,21 @@ export interface Asset {
   captionCandidate: boolean;
   /** Changes whenever the cached caption changes. */
   captionRev: number;
+  /** User tags, sorted by name. */
+  tags: string[];
   v: string;
   needsPreview: boolean;
   libraryName?: string;
   writable?: boolean;
   expiresAtMs?: number;
+}
+
+export interface Tag {
+  id: number;
+  name: string;
+  /** Live assets with this tag. */
+  count: number;
+  cover: { id: number; v: string } | null;
 }
 
 export interface Folder {
@@ -129,6 +139,7 @@ export interface Query {
   minRating?: number;
   kind?: 'image' | 'video';
   caption?: CaptionFilter;
+  tag?: string;
   order?: 'asc' | 'desc';
 }
 
@@ -193,7 +204,7 @@ export const api = {
   assets: (q: Query, cursor?: string | null, limit = 120) =>
     request<Page>('GET', `/api/assets${qs({
       library: q.library, folder: q.folder, recursive: q.recursive === false ? '0' : undefined,
-      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, caption: q.caption, order: q.order === 'asc' ? 'asc' : undefined,
+      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, caption: q.caption, tag: q.tag, order: q.order === 'asc' ? 'asc' : undefined,
       cursor, limit,
     })}`),
   asset: (id: number) => request<Asset>('GET', `/api/assets/${id}`),
@@ -211,6 +222,11 @@ export const api = {
     }),
   favorite: (id: number, favorite: boolean) => request<Asset>('POST', `/api/assets/${id}/favorite`, { favorite }),
   rate: (id: number, rating: number) => request<Asset>('POST', `/api/assets/${id}/rating`, { rating }),
+  tags: () => request<{ tags: Tag[] }>('GET', '/api/tags'),
+  /** Unknown names in `add` create new tags. */
+  setTags: (id: number, change: { add?: string[]; remove?: string[] }) => request<Asset>('POST', `/api/assets/${id}/tags`, change),
+  renameTag: (id: number, name: string) => request<{ id: number; name: string; merged: boolean }>('POST', `/api/tags/${id}/rename`, { name }),
+  deleteTag: (id: number) => request<{ ok: true }>('POST', `/api/tags/${id}/delete`),
   trash: (a: Asset) => request<Asset>('POST', `/api/assets/${a.id}/trash`, { size: a.size, mtimeMs: a.mtimeMs }),
   trashList: () => request<{ retentionDays: number; items: Asset[] }>('GET', '/api/trash'),
   restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),

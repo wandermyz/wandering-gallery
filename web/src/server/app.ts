@@ -5,13 +5,14 @@ import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance, t
 import fastifyStatic from '@fastify/static';
 import type { AppConfig } from './config.js';
 import { Captions, CAPTION_STATUSES, parseCaptionRequest } from './captions.js';
-import { CAPTION_JOIN, type AssetRow, type Db } from './db.js';
+import { CAPTION_JOIN, TAG_SEP, type AssetRow, type Db } from './db.js';
 import { registerGenerate } from './generate/routes.js';
 import type { ComfyClient } from './generate/comfy.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { videoPlayability, mediaType } from './media.js';
 import type { GenerationSummary } from './metadata/comfyui.js';
 import { checkFolder, HttpError, isInside, resolveInside } from './paths.js';
+import { checkTagName, Tags } from './tags.js';
 import { ensurePreview, ensureThumb } from './thumbs.js';
 import { Trash } from './trash.js';
 
@@ -61,6 +62,7 @@ function assetJson(r: AssetRow) {
     caption: (r.caption_status ?? null) as string | null,
     captionCandidate: !!r.has_candidate,
     captionRev: r.caption_rev ?? 0,
+    tags: r.tag_names ? r.tag_names.split(TAG_SEP) : [],
     // Thumbnail URLs embed the fingerprint so browsers can cache them forever.
     v: r.fingerprint.slice(0, 12),
     needsPreview: r.kind === 'image' && !r.animated &&
@@ -81,6 +83,7 @@ function intParam(v: unknown, name: string, min: number, max: number, fallback?:
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { cfg, db, indexer, trash } = deps;
   const captions = new Captions(db, indexer);
+  const tags = new Tags(db);
   const app = Fastify({
     ...(deps.logger ? { loggerInstance: deps.logger } : { logger: false }),
     logController: new LogController({ disableRequestLogging: true }),
@@ -251,11 +254,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         where.push('folder = ?');
         params.push(folder);
       }
-    } else {
-      // Cross-library views only cover libraries that opt in.
+    } else if (!q.tag) {
+      // Cross-library views only cover libraries that opt in (a tag view covers all of them).
       const ids = cfg.libraries.filter((l) => l.showInAll).map((l) => l.id);
       where.push(ids.length ? `library_id IN (${ids.map(() => '?').join(',')})` : '0');
       params.push(...ids);
+    }
+    if (q.tag) {
+      where.push('EXISTS (SELECT 1 FROM asset_tags JOIN tags ON tags.id = asset_tags.tag_id WHERE asset_tags.asset_id = assets.id AND tags.name = ?)');
+      params.push(checkTagName(q.tag));
     }
     if (q.favorite === '1') where.push('favorite = 1');
     const minRating = intParam(q.minRating, 'minRating', 0, 5, 0);
@@ -435,6 +442,28 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const rating = intParam(body.rating, 'rating', 0, 5);
     db.setRating(row.id, rating);
     return assetJson(db.asset(row.id)!);
+  });
+
+  app.post('/api/assets/:id/tags', async (req) => {
+    const row = getAsset((req.params as { id: string }).id, ['ready']);
+    tags.update(row.id, (req.body ?? {}) as { add?: unknown; remove?: unknown });
+    return assetJson(db.asset(row.id)!);
+  });
+
+  app.get('/api/tags', async (_req, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { tags: tags.list() };
+  });
+
+  app.post('/api/tags/:id/rename', async (req) => {
+    const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
+    return tags.rename(id, ((req.body ?? {}) as { name?: unknown }).name);
+  });
+
+  app.post('/api/tags/:id/delete', async (req) => {
+    const id = intParam((req.params as { id: string }).id, 'id', 1, Number.MAX_SAFE_INTEGER);
+    tags.delete(id);
+    return { ok: true };
   });
 
   app.post('/api/assets/:id/trash', async (req) => {

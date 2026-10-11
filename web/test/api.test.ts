@@ -110,6 +110,60 @@ describe('HTTP API', () => {
     expect((await app.inject({ url: '/api/assets?minRating=1' })).json().total).toBe(0);
   });
 
+  it('tags assets, lists tags and filters by tag', async () => {
+    await setup();
+    await makePng(path.join(env.lib('main'), 'a.png'), { color: '#111111' });
+    await makePng(path.join(env.lib('main'), 'b.png'), { color: '#222222' });
+    ageAll(env.root);
+    await env.sync();
+    const [x, y] = (await app.inject({ url: '/api/assets' })).json().items;
+    expect(x.tags).toEqual([]);
+
+    // New tags are created; whitespace is normalized; an existing tag matches case-insensitively.
+    expect((await post(`/api/assets/${x.id}/tags`, { add: ['  Red   hair ', 'cat'] })).json().tags).toEqual(['cat', 'Red hair']);
+    expect((await post(`/api/assets/${y.id}/tags`, { add: ['red hair'] })).json().tags).toEqual(['Red hair']);
+    expect((await post(`/api/assets/${y.id}/tags`, { add: [''] })).statusCode).toBe(400);
+    expect((await post(`/api/assets/${y.id}/tags`, { add: ['a\u0007b'] })).statusCode).toBe(400);
+    expect((await post(`/api/assets/${y.id}/tags`, {})).statusCode).toBe(400);
+
+    const list = (await app.inject({ url: '/api/tags' })).json().tags;
+    expect(list.map((t: { name: string; count: number }) => [t.name, t.count])).toEqual([['cat', 1], ['Red hair', 2]]);
+
+    const byTag = (await app.inject({ url: '/api/assets?tag=RED%20HAIR' })).json();
+    expect(byTag.total).toBe(2);
+    expect((await app.inject({ url: '/api/assets?tag=cat' })).json().items.map((i: { id: number }) => i.id)).toEqual([x.id]);
+
+    // Removing; the tag stays (with no assets) until it is deleted.
+    expect((await post(`/api/assets/${x.id}/tags`, { remove: ['cat'] })).json().tags).toEqual(['Red hair']);
+    const cat = (await app.inject({ url: '/api/tags' })).json().tags.find((t: { name: string }) => t.name === 'cat');
+    expect(cat.count).toBe(0);
+
+    // Renaming onto an existing tag merges them.
+    await post(`/api/assets/${x.id}/tags`, { add: ['cat'] });
+    const red = (await app.inject({ url: '/api/tags' })).json().tags.find((t: { name: string }) => t.name === 'Red hair');
+    expect((await post(`/api/tags/${cat.id}/rename`, { name: 'red hair' })).json()).toMatchObject({ merged: true });
+    expect((await app.inject({ url: '/api/tags' })).json().tags.map((t: { name: string; count: number }) => [t.name, t.count])).toEqual([['red hair', 2]]);
+    expect((await post(`/api/tags/${red.id}/rename`, { name: 'redhead' })).json()).toMatchObject({ merged: false, name: 'redhead' });
+
+    expect((await post(`/api/tags/${red.id}/delete`)).json()).toEqual({ ok: true });
+    expect((await app.inject({ url: `/api/assets/${x.id}` })).json().tags).toEqual([]);
+    expect((await post(`/api/tags/${red.id}/delete`)).statusCode).toBe(404);
+  });
+
+  it('keeps tags through trash and restore', async () => {
+    await setup();
+    await makePng(path.join(env.lib('main'), 'a.png'), { color: '#111111' });
+    ageAll(env.root);
+    await env.sync();
+    const [x] = (await app.inject({ url: '/api/assets' })).json().items;
+    await post(`/api/assets/${x.id}/tags`, { add: ['keep'] });
+    await post(`/api/assets/${x.id}/trash`);
+    expect((await app.inject({ url: '/api/tags' })).json().tags[0].count).toBe(0);
+    expect((await app.inject({ url: '/api/assets?tag=keep' })).json().total).toBe(0);
+    expect((await post(`/api/trash/${x.id}/restore`)).json().tags).toEqual(['keep']);
+    expect((await app.inject({ url: '/api/assets?tag=keep' })).json().total).toBe(1);
+  });
+
   it('serves metadata summaries and raw JSON', async () => {
     await setup();
     await makePng(path.join(env.lib('main'), 'gen.png'), {

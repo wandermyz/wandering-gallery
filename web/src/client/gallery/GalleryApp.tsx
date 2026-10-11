@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, ApiError, fileUrl, thumbUrl, type Asset, type CaptionFilter, type Folder, type Library, type Query } from './api';
 import { Grid, type Density } from './Grid';
+import { TagsView } from './Tags';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
 import { CAPTION_EVENT, cx, formatBytes, formatDate } from '../common/util';
@@ -11,8 +12,10 @@ import { SectionSwitcher } from '../shell/nav';
 // The gallery state lives in the URL so the back button, reloads and bookmarks work.
 
 interface Route {
-  view: 'gallery' | 'trash';
+  view: 'gallery' | 'trash' | 'tags';
   library: string;
+  /** Show only assets with this tag (across all libraries). */
+  tag: string;
   folder: string;
   favorite: boolean;
   minRating: number;
@@ -31,8 +34,9 @@ const CAPTION_FILTERS: ['' | CaptionFilter, string][] = [
 function readRoute(): Route {
   const p = new URLSearchParams(location.search);
   return {
-    view: location.pathname.startsWith('/gallery/trash') ? 'trash' : 'gallery',
+    view: location.pathname.startsWith('/gallery/trash') ? 'trash' : location.pathname.startsWith('/gallery/tags') ? 'tags' : 'gallery',
     library: p.get('lib') ?? '',
+    tag: p.get('tag') ?? '',
     folder: p.get('folder') ?? '',
     favorite: p.get('fav') === '1',
     minRating: Math.min(5, Math.max(0, Number(p.get('rating')) || 0)),
@@ -47,6 +51,7 @@ function readRoute(): Route {
 function routeUrl(r: Route): string {
   const p = new URLSearchParams();
   if (r.library) p.set('lib', r.library);
+  if (r.tag) p.set('tag', r.tag);
   if (r.folder) p.set('folder', r.folder);
   if (r.favorite) p.set('fav', '1');
   if (r.minRating) p.set('rating', String(r.minRating));
@@ -56,7 +61,7 @@ function routeUrl(r: Route): string {
   if (r.flat) p.set('flat', '1');
   if (r.asset) p.set('a', String(r.asset));
   const s = p.toString();
-  return (r.view === 'trash' ? '/gallery/trash' : '/gallery') + (s ? `?${s}` : '');
+  return (r.view === 'trash' ? '/gallery/trash' : r.view === 'tags' ? '/gallery/tags' : '/gallery') + (s ? `?${s}` : '');
 }
 
 function useRoute() {
@@ -90,6 +95,7 @@ function queryOf(r: Route): Query {
     minRating: r.minRating,
     kind: r.kind || undefined,
     caption: r.caption || undefined,
+    tag: r.tag || undefined,
     order: r.order,
   };
 }
@@ -209,7 +215,7 @@ export default function GalleryApp() {
   const [focusId, setFocusId] = useState<number | null>(null);
   const [newCount, setNewCount] = useState(0);
 
-  const q = useMemo(() => queryOf(route), [route.library, route.folder, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
+  const q = useMemo(() => queryOf(route), [route.library, route.folder, route.tag, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
   const list = useAssets(q, route.view === 'gallery');
 
   const toast = useCallback((text: string, opts: Partial<ToastMsg> = {}) => {
@@ -312,7 +318,8 @@ export default function GalleryApp() {
   const applyAsset = (a: Asset) => {
     list.patch(a);
     // Drop it from filtered views it no longer matches.
-    if ((route.favorite && !a.favorite) || a.rating < route.minRating) {
+    if ((route.favorite && !a.favorite) || a.rating < route.minRating ||
+        (route.tag && !a.tags.some((t) => t.toLowerCase() === route.tag.toLowerCase()))) {
       // Keep it while it is open in the viewer, so the viewer does not jump.
       if (!route.asset) list.remove(a.id);
     }
@@ -424,6 +431,8 @@ export default function GalleryApp() {
     }
   };
 
+  const openTag = (name: string) => nav({ view: 'gallery', tag: name, library: '', folder: '', favorite: false, asset: null });
+
   const openViewer = (index: number) => {
     const a = list.items[index];
     if (a) nav({ asset: a.id });
@@ -452,6 +461,8 @@ export default function GalleryApp() {
   const filtersActive = route.favorite || route.minRating > 0 || !!route.kind || !!route.caption || route.order === 'asc' || route.flat;
   const title = route.view === 'trash'
     ? 'Trash'
+    : route.view === 'tags' ? 'Tags'
+    : route.tag ? `# ${route.tag}`
     : route.favorite && !route.library ? 'Favorites' : currentLib?.name ?? 'All media';
   const crumbs = route.folder ? route.folder.split('/') : [];
 
@@ -481,6 +492,18 @@ export default function GalleryApp() {
           </>
         )}
       </header>
+
+      {route.view === 'gallery' && route.tag && (
+        <nav class="folders" aria-label="Tag">
+          <div class="crumbs">
+            <button type="button" class="crumb" onClick={() => nav({ view: 'tags', tag: '' })}>Tags</button>
+            <span class="crumb-wrap">
+              <Icon name="next" size={12} />
+              <span class="crumb current">{route.tag}</span>
+            </span>
+          </div>
+        </nav>
+      )}
 
       {route.view === 'gallery' && route.library && (crumbs.length > 0 || folders.length > 0) && (
         <nav class="folders" aria-label="Folders">
@@ -516,7 +539,9 @@ export default function GalleryApp() {
       )}
 
       <main class="content">
-        {route.view === 'trash' ? (
+        {route.view === 'tags' ? (
+          <TagsView onOpen={openTag} toast={toast} ask={ask} />
+        ) : route.view === 'trash' ? (
           <TrashView toast={toast} ask={ask} onChange={() => {
             void loadStatus();
             void loadLibraries();
@@ -573,22 +598,27 @@ export default function GalleryApp() {
       <Sheet open={menu} onClose={() => setMenu(false)} title="Libraries" class="sheet-left">
         <SectionSwitcher onPick={() => setMenu(false)} />
         <nav class="lib-list">
-          <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && !route.favorite && 'active')}
-            onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', favorite: false, asset: null }); }}>
+          <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && !route.tag && !route.favorite && 'active')}
+            onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', tag: '', favorite: false, asset: null }); }}>
             <Icon name="grid" />
             <span class="lib-name">All media</span>
             <span class="lib-count">{libraries?.reduce((n, l) => n + (l.showInAll ? l.count : 0), 0).toLocaleString() ?? ''}</span>
           </button>
-          <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && route.favorite && 'active')}
-            onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', favorite: true, asset: null }); }}>
+          <button type="button" class={cx('lib-item', route.view === 'gallery' && !route.library && !route.tag && route.favorite && 'active')}
+            onClick={() => { setMenu(false); nav({ view: 'gallery', library: '', folder: '', tag: '', favorite: true, asset: null }); }}>
             <Icon name="heart" />
             <span class="lib-name">Favorites</span>
+          </button>
+          <button type="button" class={cx('lib-item', (route.view === 'tags' || (route.view === 'gallery' && !!route.tag)) && 'active')}
+            onClick={() => { setMenu(false); nav({ view: 'tags', tag: '', asset: null }); }}>
+            <Icon name="tag" />
+            <span class="lib-name">Tags</span>
           </button>
           <div class="lib-sep">Libraries</div>
           {libraries === null && <Spinner />}
           {libraries?.map((l) => (
             <button type="button" key={l.id} class={cx('lib-item', route.view === 'gallery' && route.library === l.id && 'active')}
-              onClick={() => { setMenu(false); nav({ view: 'gallery', library: l.id, folder: '', favorite: false, asset: null }); }}>
+              onClick={() => { setMenu(false); nav({ view: 'gallery', library: l.id, folder: '', tag: '', favorite: false, asset: null }); }}>
               <Icon name="folder" />
               <span class="lib-name">
                 {l.name}
@@ -692,6 +722,8 @@ export default function GalleryApp() {
             onRate={onRate}
             onDelete={onDelete}
             onShare={onShare}
+            onAssetChange={applyAsset}
+            onOpenTag={openTag}
             writable={(a) => !!libById.get(a.library)?.writable}
             libName={(id) => libById.get(id)?.name ?? id}
           />
@@ -730,7 +762,11 @@ function ViewerHost(props: Parameters<typeof Viewer>[0] & { libName: (id: string
     await rest.onRate(a, r);
     if (!inList && extra) setExtra(await api.asset(extra.id));
   };
-  return <Viewer {...rest} items={withLib} id={id} onFavorite={onFavorite} onRate={onRate} />;
+  const onAssetChange = (a: Asset) => {
+    rest.onAssetChange(a);
+    if (!inList && extra?.id === a.id) setExtra({ ...extra, ...a });
+  };
+  return <Viewer {...rest} items={withLib} id={id} onFavorite={onFavorite} onRate={onRate} onAssetChange={onAssetChange} />;
 }
 
 function EmptyState({ route, scanning, onClear }: { route: Route; scanning: boolean; onClear: () => void }) {

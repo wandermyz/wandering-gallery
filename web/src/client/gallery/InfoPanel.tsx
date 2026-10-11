@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, ApiError, fileUrl, type Asset, type CaptionAction, type CaptionResponse, type MetadataResponse, type Scalar, type Summary } from './api';
 import { CopyButton, Icon, IconButton, Spinner } from '../common/ui';
+import { TagEditor } from './Tags';
 import { CAPTION_EVENT, CAPTION_LABELS, cx, formatBytes, formatDate, formatDuration } from '../common/util';
 
 function Section({ title, defaultOpen = true, children, extra }: { title: string; defaultOpen?: boolean; children: ComponentChildren; extra?: ComponentChildren }) {
@@ -376,7 +377,13 @@ function CaptionSection({ asset: a }: { asset: Asset }) {
   );
 }
 
-export function InfoPanel({ asset: a, onClose }: { asset: Asset; onClose: () => void }) {
+export function InfoPanel({ asset: a, onClose, onAssetChange, onOpenTag, tagFocus }: {
+  asset: Asset;
+  onClose: () => void;
+  onAssetChange: (a: Asset) => void;
+  onOpenTag: (name: string) => void;
+  tagFocus?: number;
+}) {
   const [meta, setMeta] = useState<MetadataResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -410,6 +417,11 @@ export function InfoPanel({ asset: a, onClose }: { asset: Asset; onClose: () => 
         <IconButton icon="close" label="Close details" onClick={onClose} />
       </div>
       <div class="info-scroll">
+        {a.status === 'ready' && (
+          <Section title="Tags" extra={a.tags.length > 0 && <span class="cap-pill">{a.tags.length}</span>}>
+            <TagEditor asset={a} onChange={onAssetChange} onOpenTag={onOpenTag} focusKey={tagFocus} />
+          </Section>
+        )}
         {a.status === 'ready' && <CaptionSection asset={a} />}
         {error && <p class="error-text">Could not load metadata: {error}</p>}
         {!meta && !error && <Spinner label="Loading metadata" />}

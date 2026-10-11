@@ -26,6 +26,9 @@ export interface ViewerProps {
   onRate: (a: Asset, rating: number) => void;
   onDelete: (a: Asset) => void;
   onShare: (a: Asset) => void;
+  /** The asset changed (e.g. its tags were edited in the details panel). */
+  onAssetChange: (a: Asset) => void;
+  onOpenTag: (name: string) => void;
   writable: (a: Asset) => boolean;
 }
 
@@ -39,6 +42,7 @@ export function Viewer(props: ViewerProps) {
   const [chrome, setChrome] = useState(true);
   const [info, setInfo] = useState(() => localStorage.getItem('wg.info') === '1' && window.innerWidth >= 900);
   const [zoomed, setZoomed] = useState(false);
+  const [tagFocus, setTagFocus] = useState(0);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -171,6 +175,15 @@ export function Viewer(props: ViewerProps) {
         case 'i':
         case 'I':
           setInfo((v) => !v);
+          break;
+        case 't':
+        case 'T':
+          // Opens the details with the tag input focused.
+          if (a?.status === 'ready') {
+            e.preventDefault();
+            setInfo(true);
+            setTagFocus((n) => n + 1);
+          }
           break;
         case 'Delete':
         case 'Backspace':
@@ -474,7 +487,9 @@ export function Viewer(props: ViewerProps) {
           />
         </footer>
       </div>
-      {info && <InfoPanel asset={asset} onClose={() => setInfo(false)} />}
+      {info && (
+        <InfoPanel asset={asset} onClose={() => setInfo(false)} onAssetChange={props.onAssetChange} onOpenTag={props.onOpenTag} tagFocus={tagFocus} />
+      )}
     </div>
   );
 }

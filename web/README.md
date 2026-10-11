@@ -11,8 +11,8 @@ output on your own machine.
   from PNG, WebP, AVIF, MP4/MOV/WebM, and shows prompts, seed, sampler,
   scheduler, steps, CFG, models, and LoRAs. You can copy prompts and open the
   raw JSON.
-- **Favorites and 0–5 star ratings**, with filters. These are stored only in
-  SQLite and never written into your files.
+- **Favorites, 0–5 star ratings and tags**, with filters. These are stored only
+  in SQLite and never written into your files.
 - **Safe delete**: deleted files move to a trash folder and can be restored
   for 7 days, with their rating and metadata intact.
 - **Live**: newly generated files show up within seconds without a reload.
@@ -162,6 +162,7 @@ experience.
 | Close viewer | swipe down, back button | `Esc` |
 | Favorite | ♥ button | `F` |
 | Rate | tap a star (tap again to clear) | `0`–`5` |
+| Add a tag | ⓘ → *Tags* | `T` |
 | Details / metadata | ⓘ button | `I` |
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
@@ -176,6 +177,21 @@ The ☰ menu switches between *All media*, *Favorites*, each library, and
 favorites only, minimum rating, sort order, whether subfolders are included,
 and thumbnail size. The view state lives in the URL, so the browser's back
 button and bookmarks work.
+
+### Tags
+
+The details panel (ⓘ, or `T` to jump straight to the input) has a *Tags*
+section. Type to filter the existing tags and pick one, or create a new one
+with *Create “…”* or Enter. Tags are case-insensitive: "Sunset" and "sunset" are
+the same tag, and it keeps the spelling it was created with. Tap a tag's ×
+to remove it, or its name to see everything with that tag.
+
+*Tags* in the ☰ menu lists every tag with a cover image and a count. Open one to
+browse its images across all libraries, including those with
+`showInAll: false`; the usual filters still apply. You can also rename a tag
+there (renaming it to an existing tag merges the two) or delete it. Tags live
+only in SQLite. They stay with a file when it's renamed, moved or trashed and
+restored, and go away when it's permanently deleted.
 
 ### Training captions
 

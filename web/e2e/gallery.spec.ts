@@ -272,6 +272,65 @@ test('caption sidecars can be edited in the details panel', async ({ page }, inf
   await page.getByRole('button', { name: 'Close details' }).click();
 });
 
+test('tags can be added (new or existing), browsed in the Tags view, and removed', async ({ page }, info) => {
+  // Every project shares one server, so tag names are per project.
+  const sunset = `sunset ${info.project.name}`;
+  const beach = `beach ${info.project.name}`;
+  const tags = page.locator('.info .section', { hasText: 'Tags' }).first();
+  const input = tags.getByRole('combobox', { name: 'Add a tag' });
+  // Earlier projects may have left tags of their own on the same images.
+  const mine = tags.locator('.tag-chip-name', { hasText: info.project.name });
+
+  await openGallery(page);
+  await openAsset(page, 'gen_00001_.png');
+  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
+  // Create two new tags; typing "f" must not toggle the favorite.
+  await input.fill(sunset);
+  await tags.getByRole('button', { name: `Create “${sunset}”` }).click();
+  await expect(mine).toHaveText([sunset]);
+  await input.fill(beach);
+  await input.press('Enter');
+  await expect(mine).toHaveText([beach, sunset]);
+  await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
+
+  // On the next image the existing tag is suggested (not created again).
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await openAsset(page, 'gen_00002_.png');
+  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
+  await input.fill(sunset.toUpperCase());
+  await expect(tags.locator('.tag-option.create')).toHaveCount(0);
+  await tags.locator('.tag-option', { hasText: sunset }).click();
+  await expect(mine).toHaveText([sunset]);
+
+  // Tags view: count, open the tag, both images are listed.
+  await page.goto('/gallery/tags');
+  const row = page.locator('.tags-item', { hasText: sunset });
+  await expect(row.locator('.lib-count')).toHaveText('2');
+  await row.locator('.tags-open').click();
+  await expect(page).toHaveURL(/\/gallery\?tag=/);
+  await expect(page.locator('.topbar-title h1')).toHaveText(`# ${sunset}`);
+  await expect(page.locator('.cell')).toHaveCount(2);
+
+  // Removing a tag in the viewer drops the image from that tag's view after closing.
+  await openAsset(page, 'gen_00002_.png');
+  if (!(await page.locator('.info').count())) await page.getByRole('button', { name: 'Details and metadata' }).click();
+  await tags.getByRole('button', { name: `Remove tag ${sunset}` }).click();
+  await expect(mine).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close details' }).click();
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await page.reload();
+  await expect(page.locator('.cell')).toHaveCount(1);
+
+  // Delete both tags from the Tags view.
+  await page.goto('/gallery/tags');
+  for (const t of [sunset, beach]) {
+    await page.getByRole('button', { name: `Delete tag ${t}` }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete tag' }).click();
+    await expect(page.locator('.tags-item', { hasText: t })).toHaveCount(0);
+  }
+});
+
 test('newly generated files appear without reloading', async ({ page }, info) => {
   await openGallery(page);
   const name = `fresh_${info.project.name}.png`;
