@@ -592,6 +592,22 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return { ok: true };
   });
 
+  /** Permanently deletes everything in the trash this request can see (hidden items stay while locked). */
+  app.post('/api/trash/purge-all', async (req) => {
+    const rows = db.all<{ id: number }>(`SELECT id FROM assets WHERE status = 'trashed' AND ${visible(req)}`);
+    let deleted = 0;
+    let lastError: string | null = null;
+    for (const { id } of rows) {
+      try {
+        await trash.purge(id);
+        deleted++;
+      } catch (err) {
+        lastError = (err as Error).message;
+      }
+    }
+    return { deleted, failed: rows.length - deleted, error: lastError };
+  });
+
   app.post('/api/rescan', async (req) => {
     const body = (req.body ?? {}) as { library?: unknown };
     if (body.library !== undefined) {

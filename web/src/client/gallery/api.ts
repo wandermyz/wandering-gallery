@@ -258,6 +258,7 @@ export const api = {
   trashList: () => request<{ retentionDays: number; items: Asset[] }>('GET', '/api/trash'),
   restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),
   purge: (id: number) => request<{ ok: true }>('POST', `/api/trash/${id}/purge`),
+  purgeAll: () => request<{ deleted: number; failed: number; error: string | null }>('POST', '/api/trash/purge-all'),
   rescan: (library?: string) => request<{ ok: true }>('POST', '/api/rescan', library ? { library } : {}),
 };
 
