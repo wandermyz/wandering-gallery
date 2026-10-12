@@ -125,6 +125,21 @@ describe('hidden assets', () => {
     expect(await names('/api/assets')).toEqual(['public.png']);
   });
 
+  it('empties the trash, but leaves hidden items alone while locked', async () => {
+    const { pub, secret } = await setup();
+    await post(`/api/assets/${secret}/hidden`, { hidden: true });
+    const cookie = await unlockCookie();
+    for (const id of [pub, secret]) expect((await post(`/api/assets/${id}/trash`, {}, cookie)).statusCode).toBe(200);
+
+    expect((await post('/api/trash/purge-all')).json()).toEqual({ deleted: 1, failed: 0, error: null });
+    expect(env.db.asset(pub)).toBeUndefined();
+    expect(env.db.asset(secret)).toMatchObject({ status: 'trashed' });
+
+    expect((await post('/api/trash/purge-all', {}, cookie)).json()).toEqual({ deleted: 1, failed: 0, error: null });
+    expect(env.db.asset(secret)).toBeUndefined();
+    expect(fs.readdirSync(env.trash.root, { recursive: true }).filter((f) => String(f).endsWith('.png'))).toEqual([]);
+  });
+
   it('rejects wrong passphrases, forged or expired cookies, and slows down guessing', async () => {
     const { secret } = await setup({ unlockMinutes: 1 });
     await post(`/api/assets/${secret}/hidden`, { hidden: true });

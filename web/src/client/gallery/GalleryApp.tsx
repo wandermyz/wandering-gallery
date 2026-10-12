@@ -1036,6 +1036,7 @@ function TrashView({ toast, ask, onChange }: {
   const [data, setData] = useState<{ retentionDays: number; items: Asset[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [purgingAll, setPurgingAll] = useState(false);
   const load = () => api.trashList().then(setData, (e) => setError((e as Error).message));
   useEffect(() => {
     void load();
@@ -1075,14 +1076,45 @@ function TrashView({ toast, ask, onChange }: {
     }
   };
 
+  const purgeAll = async () => {
+    if (!data?.items.length) return;
+    const n = data.items.length;
+    const ok = await ask({
+      title: `Delete ${n === 1 ? '1 item' : `all ${n} items`} permanently?`,
+      message: <p class="muted">Everything in the trash is deleted. This cannot be undone.</p>,
+      confirm: 'Delete all forever',
+      danger: true,
+    });
+    if (!ok) return;
+    setPurgingAll(true);
+    try {
+      const r = await api.purgeAll();
+      if (r.failed) toast(`Deleted ${r.deleted}, ${r.failed} failed: ${r.error}`, { kind: 'error' });
+      else toast(`Deleted ${r.deleted} item${r.deleted === 1 ? '' : 's'} permanently`);
+    } catch (e) {
+      toast((e as Error).message, { kind: 'error' });
+    } finally {
+      setPurgingAll(false);
+      await load();
+      onChange();
+    }
+  };
+
   if (error) return <div class="banner banner-error"><Icon name="alert" size={18} /> {error}</div>;
   if (!data) return <Spinner label="Loading trash" />;
   return (
     <div class="trash">
-      <p class="trash-note">
-        Items are kept for {data.retentionDays} day{data.retentionDays === 1 ? '' : 's'}, then deleted permanently.
-        Restoring puts the file back where it was, with its favorite and rating.
-      </p>
+      <div class="trash-head">
+        <p class="trash-note">
+          Items are kept for {data.retentionDays} day{data.retentionDays === 1 ? '' : 's'}, then deleted permanently.
+          Restoring puts the file back where it was, with its favorite and rating.
+        </p>
+        {data.items.length > 0 && (
+          <button type="button" class="btn btn-sm btn-danger-ghost" disabled={purgingAll || busy !== null} onClick={purgeAll}>
+            Delete All
+          </button>
+        )}
+      </div>
       {data.items.length === 0 ? (
         <div class="empty"><Icon name="trash" size={40} /><p>Trash is empty.</p></div>
       ) : (
@@ -1103,10 +1135,10 @@ function TrashView({ toast, ask, onChange }: {
                   </div>
                 </div>
                 <div class="trash-actions">
-                  <button type="button" class="btn btn-sm" disabled={busy === a.id} onClick={() => restore(a)}>
+                  <button type="button" class="btn btn-sm" disabled={purgingAll || busy === a.id} onClick={() => restore(a)}>
                     <Icon name="restore" size={16} /> Restore
                   </button>
-                  <button type="button" class="btn btn-sm btn-danger-ghost" disabled={busy === a.id} onClick={() => purge(a)}>
+                  <button type="button" class="btn btn-sm btn-danger-ghost" disabled={purgingAll || busy === a.id} onClick={() => purge(a)}>
                     Delete
                   </button>
                 </div>
