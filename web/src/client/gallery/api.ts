@@ -19,6 +19,8 @@ export interface Asset {
   id: number;
   library: string;
   path: string;
+  /** Absolute path on the server (null for a library no longer configured). */
+  filePath: string | null;
   folder: string;
   name: string;
   kind: 'image' | 'video';

@@ -8,6 +8,7 @@ import { HttpError } from '../src/server/paths.js';
 import type { ComfyClient, Graph, JobResult, Progress } from '../src/server/generate/comfy.js';
 import { parseOutputUrl } from '../src/server/generate/comfy.js';
 import { TagsFlow } from '../src/server/generate/flow.js';
+import { VideoFlow, videoCanvas, videoFrames } from '../src/server/generate/video.js';
 import type { Gpu, Tagger } from '../src/server/generate/tools.js';
 import { makeEnv, makePng, ageAll, tmpDir, type Env } from './helpers.js';
 
@@ -58,6 +59,11 @@ class FakeComfy implements ComfyClient {
   }
   async cancel(promptId: string) {
     this.cancelled.push(promptId);
+  }
+  uploads: { file: string; name: string }[] = [];
+  async upload(file: string, name: string) {
+    this.check();
+    this.uploads.push({ file, name });
   }
   progress(id: string, value: number, max: number) {
     this.waiters.get(id)?.onProgress({ node: '5', value, max });
@@ -168,6 +174,28 @@ describe('generate flow graphs', () => {
     expect(f.info().problem).toMatch(/traits must be/);
   });
 
+  it('builds a MiniMax H3 video job from the image, prompt and length', () => {
+    // The template's 17k+5 frame grid at 24 fps, and H3's native canvas.
+    expect([5, 8, 10, 12, 15].map(videoFrames)).toEqual([124, 192, 243, 294, 362]);
+    expect(videoCanvas(1344, 768)).toEqual({ width: 1344, height: 768 });
+    expect(videoCanvas(832, 1216)).toEqual({ width: 768, height: 1120 });
+    expect(videoCanvas(1024, 1024)).toEqual({ width: 768, height: 768 });
+
+    const v = new VideoFlow(parseConfig({ libraries: [{ id: 'a', path: dir }] }).generate);
+    expect(v.info()).toMatchObject({ id: 'minimax-h3-i2v', kind: 'video', ready: true, seconds: [5, 8, 10, 12, 15], defaultSeconds: 5 });
+    const { graph, pnginfo } = v.videoJob({ image: 'wg_abc.png', sourcePath: '/lib/cat.png', width: 832, height: 1216, seconds: 10 }, 'the cat waves', 9);
+    expect(graph['6'].inputs).toMatchObject({ prompt: 'the cat waves', width: 768, height: 1120, length: 243, first_frame: ['16', 0] });
+    expect(graph['16'].inputs.image).toBe('wg_abc.png');
+    expect(graph['7'].inputs.noise_seed).toBe(9);
+    // Default parameters: the 8-step turbo LoRA.
+    expect(graph['2'].inputs.lora_name).toMatch(/turbo_8step/);
+    expect(graph['10'].inputs.steps).toBe(8);
+    expect(pnginfo.source_image).toBe('/lib/cat.png');
+    const nodes = (pnginfo.workflow as { nodes: { id: number; widgets_values: unknown[] }[] }).nodes;
+    expect(nodes.find((n) => n.id === 105)!.widgets_values.slice(0, 5)).toEqual(['the cat waves', 768, 1120, 10, 9]);
+    expect(nodes.find((n) => n.id === 114)!.widgets_values[0]).toBe('wg_abc.png');
+  });
+
   it('parses comfy-cli output URLs', () => {
     expect(parseOutputUrl('http://127.0.0.1:8188/view?filename=a%20b.png&subfolder=x%2Fy&type=output'))
       .toEqual({ filename: 'a b.png', subfolder: 'x/y', type: 'output' });
@@ -212,7 +240,7 @@ describe('generate API', () => {
     env.cfg.generate.loras = [{ id: 'cat', title: 'Cat', lora: 'cat.safetensors', strength: 1, tags: 'mycat', negative: '', dropTags: [] }];
     app = await build();
     const flows = (await app.inject({ url: '/api/generate/flows' })).json().flows;
-    expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat']);
+    expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat', 'minimax-h3-i2v']);
     expect((await post('/api/generate/flows/wai-illustrious-lora-cat/tags', { prompt: 'a cat' })).json().tags).toBe('masterpiece, mycat, tags 1');
     const run = (await post('/api/generate/flows/wai-illustrious-lora-cat/runs', { prompt: 'a cat', variations: ['mycat, x'], batch: 1 })).json();
     expect(run.flow).toBe('wai-illustrious-lora-cat');
@@ -221,7 +249,7 @@ describe('generate API', () => {
 
   it('lists the flow and ComfyUI status', async () => {
     await setup();
-    expect((await app.inject({ url: '/api/generate/flows' })).json().flows).toMatchObject([{ id: 'wai-illustrious-tags', ready: true }]);
+    expect((await app.inject({ url: '/api/generate/flows' })).json().flows).toMatchObject([{ id: 'wai-illustrious-tags', ready: true }, { id: 'minimax-h3-i2v', kind: 'video' }]);
     expect((await app.inject({ url: '/api/generate/status' })).json()).toMatchObject({ online: true, devices: [{ name: 'gpu' }] });
     comfy.online = false;
     expect((await app.inject({ url: '/api/generate/status' })).json()).toMatchObject({ online: false, error: expect.stringMatching(/not running/) });
@@ -349,5 +377,41 @@ describe('generate API', () => {
     const r = await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a girl', variations: ['t'], batch: 1 });
     expect(r.statusCode).toBe(503);
     expect((await app.inject({ url: '/api/generate/runs' })).json().runs).toEqual([]);
+  });
+
+  it('generates a video from a gallery image picked by path', async () => {
+    await setup();
+    const img = path.join(env.lib('comfyui'), 'kf', 'cat.png');
+    await makePng(img, { w: 1344, h: 768 });
+    await makePng(path.join(env.lib('comfyui'), 'clip.png'));
+    ageAll(env.root);
+    await env.sync();
+
+    // The viewer's "Copy path" value, and the lookup behind "Paste".
+    const asset = (await app.inject({ url: '/api/assets?library=comfyui&recursive=1' })).json().items.find((a: { name: string }) => a.name === 'cat.png');
+    expect(asset.filePath).toBe(img);
+    const found = await post('/api/generate/video/image', { path: `${img}` });
+    expect(found.json().asset).toMatchObject({ id: asset.id, width: 1344, height: 768 });
+    expect((await post('/api/generate/video/image', { path: 'kf/cat.png' })).statusCode).toBe(400);
+    expect((await post('/api/generate/video/image', { path: '/etc/passwd' })).statusCode).toBe(404);
+    expect((await post('/api/generate/video/image', { path: path.join(env.lib('comfyui'), 'kf', '..', '..', '..', 'data', 'gallery.db') })).statusCode).toBe(404);
+
+    const url = '/api/generate/flows/minimax-h3-i2v/runs';
+    expect((await post(url, { image: img, prompt: 'waves', seconds: 7 })).statusCode).toBe(400);
+    expect((await post(url, { image: img, prompt: ' ', seconds: 5 })).statusCode).toBe(400);
+    const r = await post(url, { image: img, prompt: 'the cat waves', seconds: 8, batch: 2 });
+    expect(r.statusCode).toBe(200);
+    const run = r.json();
+    expect(run).toMatchObject({ flow: 'minimax-h3-i2v', prompt: 'the cat waves', video: { sourcePath: img, sourceAsset: asset.id, seconds: 8 } });
+    expect(run.jobs).toHaveLength(2);
+    // Uploaded once under a content-derived name, after the GPU went to ComfyUI.
+    expect(comfy.uploads).toEqual([{ file: img, name: expect.stringMatching(/^wg_[0-9a-f]{16}\.png$/) }]);
+    expect(log).toEqual(['to comfy']);
+    expect(comfy.submitted.map((s) => s.graph['16'].inputs.image)).toEqual([comfy.uploads[0].name, comfy.uploads[0].name]);
+    expect(comfy.submitted[0].graph['6'].inputs).toMatchObject({ prompt: 'the cat waves', width: 1344, height: 768, length: 192 });
+    expect(comfy.submitted[0].graph['7'].inputs.noise_seed).not.toBe(comfy.submitted[1].graph['7'].inputs.noise_seed);
+
+    comfy.online = false;
+    expect((await post(url, { image: img, prompt: 'x', seconds: 5 })).statusCode).toBe(503);
   });
 });

@@ -153,3 +153,51 @@ test('a LoRA flow has the same form, with its trigger tags in front', async ({ p
   await page.goto(FLOW);
   await expect(page.locator('#gen-prompt')).toHaveValue('');
 });
+
+test('copy an image path in the viewer, paste it into the video flow and generate a video', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await page.goto('/gallery?lib=lib');
+  await page.getByRole('button', { name: 'gen_00001_.png' }).click();
+  await expect(page.locator('.viewer-name')).toHaveText('gen_00001_.png');
+  await page.getByRole('button', { name: 'Copy path' }).click();
+  await expect(page.getByRole('button', { name: 'Path copied' })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toMatch(/\/\.tmp\/e2e\/lib\/gen_00001_\.png$/);
+
+  await page.goto('/generate/minimax-h3-i2v');
+  await expect(page.locator('.topbar h1')).toHaveText('MiniMax H3 · image to video');
+  const go = page.getByRole('button', { name: 'Generate video' });
+  await expect(go).toBeDisabled();
+  await page.getByRole('button', { name: 'Paste' }).click();
+  await expect(page.locator('#vid-path')).toHaveValue(copied);
+  await expect(page.locator('.vid-preview img')).toBeVisible();
+  await expect(page.locator('.vid-preview figcaption')).toContainText('gen_00001_.png · 832×1216');
+
+  // Lengths: 5 s is the default.
+  await expect(page.getByRole('radio', { name: '5 s', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: '10 s', exact: true }).click();
+  await expect(go).toBeDisabled();
+  await page.locator('#vid-prompt').fill('the colors slowly shift');
+  await go.click();
+
+  const run = page.locator('.gen-run').first();
+  await expect(run.locator('.gen-run-title')).toContainText('10 s');
+  await expect(run.locator('.gen-run-tags')).toContainText('gen_00001_.png');
+  await expect(run.locator('a.gen-thumb')).toHaveCount(1, { timeout: 20_000 });
+  await expect(run.locator('.cap-pill')).toHaveText('Done');
+  await noHorizontalScroll(page);
+  // The image went to ComfyUI's input folder under a content-derived name.
+  const inputs = await (await fetch('http://127.0.0.1:2397/fake/inputs')).json();
+  expect(inputs.files).toEqual([expect.stringMatching(/^wg_[0-9a-f]{16}\.png$/)]);
+
+  await run.locator('a.gen-thumb').click();
+  await expect(page.locator('.viewer-name')).toHaveText(/^fake_\d+_\.mp4$/);
+});
+
+test('the video flow explains a path that is not a gallery image', async ({ page }) => {
+  await page.goto('/generate/minimax-h3-i2v');
+  await page.locator('#vid-path').fill('/etc/passwd');
+  await page.locator('#vid-path').press('Enter');
+  await expect(page.locator('.vid-error')).toHaveText('not an image in the gallery');
+  await expect(page.locator('.vid-preview')).toHaveCount(0);
+});

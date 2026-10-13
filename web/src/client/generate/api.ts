@@ -1,13 +1,18 @@
-import { request } from '../gallery/api';
+import { request, type Asset } from '../gallery/api';
 
 export interface FlowInfo {
   id: string;
   title: string;
+  /** `tags`: description → tags → images. `video`: image + prompt → video. */
+  kind: 'tags' | 'video';
   ready: boolean;
   problem: string | null;
   promptsFile: string;
   /** Quality tags plus the LoRA's tags, prefilled into variation 1. */
   defaultTags: string;
+  /** Video flows: the clip lengths offered, in seconds. */
+  seconds?: number[];
+  defaultSeconds?: number;
 }
 
 export interface ComfyStatus {
@@ -46,6 +51,8 @@ export interface Run {
   batch: number;
   jobs: Job[];
   status: 'running' | 'completed' | 'error' | 'cancelled';
+  /** Video runs: the input image and the clip length. */
+  video: { sourcePath: string; sourceAsset: number | null; seconds: number } | null;
 }
 
 export const genApi = {
@@ -54,6 +61,10 @@ export const genApi = {
   tags: (flow: string, prompt: string, vary: boolean) => request<{ tags: string }>('POST', `/api/generate/flows/${flow}/tags`, { prompt, vary }),
   start: (flow: string, prompt: string, variations: string[], batch: number) =>
     request<Run>('POST', `/api/generate/flows/${flow}/runs`, { prompt, variations, batch }),
+  /** The gallery image at a path copied in the viewer. */
+  videoImage: (path: string) => request<{ asset: Asset }>('POST', '/api/generate/video/image', { path }),
+  startVideo: (flow: string, image: string, prompt: string, seconds: number, batch: number) =>
+    request<Run>('POST', `/api/generate/flows/${flow}/runs`, { image, prompt, seconds, batch }),
   /** Runs still being worked on. */
   runs: () => request<{ runs: Run[] }>('GET', '/api/generate/runs'),
   run: (id: string) => request<Run>('GET', `/api/generate/runs/${id}`),
