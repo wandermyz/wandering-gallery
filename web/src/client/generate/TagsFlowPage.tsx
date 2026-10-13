@@ -17,7 +17,7 @@ const INDEX_WAIT_MS = 60_000;
 const kept = new Map<string, unknown>();
 let tagQueue: Promise<unknown> = Promise.resolve();
 
-function useKept<T>(key: string, init: T): [T, (v: T | ((cur: T) => T)) => void] {
+export function useKept<T>(key: string, init: T): [T, (v: T | ((cur: T) => T)) => void] {
   if (!kept.has(key)) kept.set(key, init);
   const [value, setValue] = useState(kept.get(key) as T);
   const set = useCallback((v: T | ((cur: T) => T)) => {
@@ -26,6 +26,26 @@ function useKept<T>(key: string, init: T): [T, (v: T | ((cur: T) => T)) => void]
     setValue(next);
   }, [key]);
   return [value, set];
+}
+
+/**
+ * Keeps a page's runs current. The server only knows the runs still being worked on
+ * (e.g. started before a reload); finished ones stay on the page until it is reloaded.
+ */
+export function useRunUpdates(flowId: string, runs: Run[], setRuns: (v: (cur: Run[]) => Run[]) => void) {
+  useEffect(() => {
+    genApi.runs().then((r) => setRuns((rs) => [...r.runs.filter((x) => x.flow === flowId && !rs.some((y) => y.id === x.id)), ...rs]), () => {});
+  }, [flowId]);
+  const active = runs.some((r) => r.status === 'running' || (unindexed(r) && Date.now() - (r.finishedAtMs ?? 0) < INDEX_WAIT_MS));
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(async () => {
+      const fresh = await Promise.all(runs.filter((r) => r.status === 'running' || unindexed(r)).map((r) => genApi.run(r.id).catch(() => null)));
+      const byId = new Map(fresh.filter((r): r is Run => !!r).map((r) => [r.id, r]));
+      setRuns((rs) => rs.map((r) => byId.get(r.id) ?? r));
+    }, 1500);
+    return () => clearInterval(t);
+  }, [active, runs]);
 }
 
 const norm = (tags: string) => tags.split(',').map((t) => t.trim()).filter(Boolean).join(', ');
@@ -56,21 +76,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
     toast(msg, 'error');
   }, [toast, onComfyDown]);
 
-  // The server only knows the runs still being worked on (e.g. started before a reload);
-  // finished ones stay on the page until it is reloaded.
-  useEffect(() => {
-    genApi.runs().then((r) => setRuns((rs) => [...r.runs.filter((x) => x.flow === flow.id && !rs.some((y) => y.id === x.id)), ...rs]), () => {});
-  }, [flow.id]);
-  const active = runs.some((r) => r.status === 'running' || (unindexed(r) && Date.now() - (r.finishedAtMs ?? 0) < INDEX_WAIT_MS));
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(async () => {
-      const fresh = await Promise.all(runs.filter((r) => r.status === 'running' || unindexed(r)).map((r) => genApi.run(r.id).catch(() => null)));
-      const byId = new Map(fresh.filter((r): r is Run => !!r).map((r) => [r.id, r]));
-      setRuns((rs) => rs.map((r) => byId.get(r.id) ?? r));
-    }, 1500);
-    return () => clearInterval(t);
-  }, [active, runs]);
+  useRunUpdates(flow.id, runs, setRuns);
 
   /** Variations with nothing beyond the prefilled quality and LoRA tags. */
   const blank = (v: string) => !v.trim() || norm(v) === norm(flow.defaultTags);
@@ -212,7 +218,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
   );
 }
 
-function Stepper({ label, value, min, max, onChange, disabled }: {
+export function Stepper({ label, value, min, max, onChange, disabled }: {
   label: string; value: number; min: number; max: number; onChange: (n: number) => void; disabled?: boolean;
 }) {
   return (
@@ -227,7 +233,7 @@ function Stepper({ label, value, min, max, onChange, disabled }: {
   );
 }
 
-const RUN_STATUS: Record<Run['status'], string> = { running: 'Running', completed: 'Done', error: 'Finished with errors', cancelled: 'Cancelled' };
+export const RUN_STATUS: Record<Run['status'], string> = { running: 'Running', completed: 'Done', error: 'Finished with errors', cancelled: 'Cancelled' };
 
 function RunCard({ run, onCancel, onReuse }: { run: Run; onCancel: () => void; onReuse: () => void }) {
   const done = run.jobs.filter((j) => j.status === 'completed').length;
@@ -254,7 +260,7 @@ function RunCard({ run, onCancel, onReuse }: { run: Run; onCancel: () => void; o
   );
 }
 
-function JobCell({ job }: { job: Job }) {
+export function JobCell({ job }: { job: Job }) {
   const out = job.outputs[0];
   if (out?.asset) {
     const a = out.asset;

@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { Db } from '../db.js';
 import { HttpError } from '../paths.js';
-import type { ComfyClient, OutputFile, Progress } from './comfy.js';
-import { randomSeed, type TagsFlow } from './flow.js';
+import type { ComfyClient, Graph, OutputFile, Progress } from './comfy.js';
+import { randomSeed } from './flow.js';
 import type { Gpu } from './tools.js';
 
 export type JobStatus = 'pending' | 'queued' | 'running' | 'completed' | 'error' | 'cancelled';
@@ -29,12 +29,24 @@ export interface Run {
   batch: number;
   jobs: Job[];
   status: 'running' | 'completed' | 'error' | 'cancelled';
+  /** Video runs: the input image and the clip length. */
+  video: { sourcePath: string; sourceAsset: number | null; seconds: number } | null;
+}
+
+/** What a run's jobs are built from: a flow, or a flow bound to one request's input. */
+export interface JobSource {
+  id: string;
+  /** Throws when the flow cannot run (missing files), before the GPU is touched. */
+  check(): void;
+  job(prompt: string, text: string, seed: number): { graph: Graph; pnginfo: Record<string, unknown> };
 }
 
 /** A finished run stays fetchable by id this long, so an open page sees its final state. */
 const FINISHED_TTL_MS = 10 * 60_000;
 export const MAX_VARIATIONS = 12;
 export const MAX_BATCH = 16;
+/** Videos take minutes each. */
+export const MAX_VIDEO_BATCH = 4;
 
 /**
  * Tracks the runs being worked on, in memory only. All jobs of a run are queued at
@@ -64,8 +76,8 @@ export class Runs {
    * Validates, hands the GPU to ComfyUI, queues every job and starts watching. Resolves
    * once all jobs are queued.
    */
-  async start(flow: TagsFlow, prompt: string, variations: string[], batch: number): Promise<Run> {
-    flow.prompts(); // fail early when the prompts file is missing
+  async start(flow: JobSource, prompt: string, variations: string[], batch: number, video: Run['video'] = null): Promise<Run> {
+    flow.check();
     await this.gpu.toComfy();
     const run: Run = {
       id: crypto.randomBytes(6).toString('hex'),
@@ -79,9 +91,10 @@ export class Runs {
         variation: v, index: i, seed: randomSeed(), promptId: null, status: 'pending', progress: 0, error: null, outputs: [],
       }))),
       status: 'running',
+      video,
     };
     for (const job of run.jobs) {
-      const { graph, pnginfo } = flow.imageJob(prompt, variations[job.variation], job.seed);
+      const { graph, pnginfo } = flow.job(prompt, variations[job.variation], job.seed);
       try {
         job.promptId = await this.comfy.submit(graph, pnginfo);
         job.status = 'queued';

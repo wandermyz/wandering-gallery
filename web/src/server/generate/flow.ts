@@ -5,6 +5,7 @@ import YAML from 'yaml';
 import type { GenerateConfig, LoraFlowConfig } from '../config.js';
 import { HttpError } from '../paths.js';
 import type { Graph } from './comfy.js';
+import type { JobSource } from './runs.js';
 
 /**
  * Prompt → Danbooru tags (danbooru-tagger, on the local LLM) → images with WAI-Illustrious.
@@ -22,12 +23,17 @@ const PROMPTS_NAME = FLOW_ID;
 export interface FlowInfo {
   id: string;
   title: string;
+  /** `tags`: description → tags → images. `video`: image + prompt → video. */
+  kind: 'tags' | 'video';
   ready: boolean;
   /** Why the flow cannot run yet (missing files or keys). */
   problem: string | null;
   promptsFile: string;
   /** Quality tags plus the LoRA's tags: what every variation's text starts with. */
   defaultTags: string;
+  /** Video flows: the clip lengths offered, in seconds. */
+  seconds?: number[];
+  defaultSeconds?: number;
 }
 
 export interface FlowPrompts {
@@ -82,7 +88,12 @@ export class TagsFlow {
     } catch (e) {
       problem = (e as Error).message;
     }
-    return { id: this.id, title: this.title, ready: !problem, problem, promptsFile: this.promptsFile, defaultTags };
+    return { id: this.id, title: this.title, kind: 'tags', ready: !problem, problem, promptsFile: this.promptsFile, defaultTags };
+  }
+
+  /** As a run's job source: fails early when the prompts file is missing. */
+  source(): JobSource {
+    return { id: this.id, check: () => void this.prompts(), job: (prompt, tags, seed) => this.imageJob(prompt, tags, seed) };
   }
 
   /** Reads templates and prompts on every use, so edits apply without a restart. */

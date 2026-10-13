@@ -42,6 +42,11 @@ if (cmd === 'system-stats') {
   }
 } else if (cmd === 'jobs' && sub === 'cancel') {
   (await get(`/fake/jobs/${id}`, { method: 'DELETE' })) ? ok('jobs cancel', { prompt_id: id, found: true }) : down('jobs');
+} else if (cmd === 'upload') {
+  // Into the fake's input folder, as ComfyUI would.
+  const files = args.slice(1).filter((a) => !a.startsWith('--'));
+  const r = await get('/fake/upload', { method: 'POST', body: JSON.stringify({ files }) });
+  r ? ok('upload', { uploads: r.uploads }) : down('upload');
 } else {
   fail(cmd ?? '', 'usage', `fake comfy-cli: unsupported ${args.join(' ')}`);
   process.exit(2);

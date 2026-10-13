@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preac
 import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
 import { Icon, IconButton, Spinner, Stars } from '../common/ui';
 import { InfoPanel } from './InfoPanel';
-import { cx, formatBytes, formatDate, formatDuration } from '../common/util';
+import { copyText, cx, formatBytes, formatDate, formatDuration } from '../common/util';
 
 interface Zoom {
   s: number;
@@ -45,6 +45,8 @@ export function Viewer(props: ViewerProps) {
   const [info, setInfo] = useState(() => localStorage.getItem('wg.info') === '1' && window.innerWidth >= 900);
   const [zoomed, setZoomed] = useState(false);
   const [tagFocus, setTagFocus] = useState(0);
+  /** The asset whose path was just copied (or failed to), for the button's feedback. */
+  const [copied, setCopied] = useState<{ id: number; ok: boolean } | null>(null);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -463,6 +465,18 @@ export function Viewer(props: ViewerProps) {
               {` · ${formatBytes(asset.size)}`}
             </div>
           </div>
+          {asset.filePath && (
+            <IconButton
+              icon={copied?.id === asset.id ? (copied.ok ? 'check' : 'alert') : 'copy'}
+              label={copied?.id === asset.id ? (copied.ok ? 'Path copied' : 'Could not copy') : 'Copy path'}
+              active={copied?.id === asset.id && copied.ok}
+              onClick={async () => {
+                const ok = await copyText(asset.filePath!);
+                setCopied({ id: asset.id, ok });
+                setTimeout(() => setCopied((c) => (c?.id === asset.id ? null : c)), 1600);
+              }}
+            />
+          )}
           <span class="viewer-count">{index + 1}{props.hasMore ? '' : ` / ${items.length}`}</span>
         </header>
 

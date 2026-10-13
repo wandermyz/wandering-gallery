@@ -34,11 +34,14 @@ const PREVIEW_PIXELS = 3000 * 3000;
 const PREVIEW_BYTES = 15 * 1024 * 1024;
 
 /** Public shape of an asset sent to the browser. */
-function assetJson(r: AssetRow, hiddenLibs: ReadonlySet<string>) {
+function assetJson(r: AssetRow, hiddenLibs: ReadonlySet<string>, libPaths: ReadonlyMap<string, string>) {
+  const root = libPaths.get(r.library_id);
   return {
     id: r.id,
     library: r.library_id,
     path: r.rel_path,
+    /** Absolute path on the server, to paste into a generate flow. */
+    filePath: root ? path.join(root, ...r.rel_path.split('/')) : null,
     folder: r.folder,
     name: r.name,
     kind: r.kind,
@@ -151,8 +154,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // unlock.ts). Hidden libraries are also left out of the library list.
   const unlock = new Unlock(cfg.hidden.passphraseHash, cfg.hidden.unlockMinutes * 60_000);
   const hiddenLibs: ReadonlySet<string> = new Set(cfg.libraries.filter((l) => l.hidden).map((l) => l.id));
+  const libPaths: ReadonlyMap<string, string> = new Map(cfg.libraries.map((l) => [l.id, l.path]));
   const toJson = (req: FastifyRequest, r: AssetRow) => {
-    const json = assetJson(r, hiddenLibs);
+    const json = assetJson(r, hiddenLibs, libPaths);
     if (!json.tags.length || unlock.isUnlocked(req)) return json;
     const hiddenTags = tags.hiddenNames();
     return hiddenTags.size ? { ...json, tags: json.tags.filter((t) => !hiddenTags.has(t.toLowerCase())) } : json;
@@ -618,7 +622,22 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  registerGenerate(app, cfg, db, deps.generate);
+  /**
+   * A gallery image by its absolute path (as copied in the viewer), for the video flow's
+   * input. Only paths inside a library, of an indexed image this request may see.
+   */
+  const imageAt = async (req: FastifyRequest, file: string) => {
+    if (!path.isAbsolute(file)) throw new HttpError('paste an absolute path, as copied in the viewer', 400);
+    const p = path.resolve(file);
+    const lib = cfg.libraries.filter((l) => isInside(l.path, p)).sort((a, b) => b.path.length - a.path.length)[0];
+    const rel = lib && path.relative(lib.path, p).split(path.sep).join('/');
+    const row = lib && rel ? db.liveAt(lib.id, rel) : undefined;
+    if (!row || (isHidden(row) && !unlock.isUnlocked(req))) throw new HttpError('not an image in the gallery', 404);
+    if (row.kind !== 'image') throw new HttpError('pick an image, not a video', 400);
+    return { row, asset: toJson(req, row), file: await assetFile(row) };
+  };
+
+  registerGenerate(app, cfg, db, imageAt, deps.generate);
 
   // ---- Live updates (Server-Sent Events) ------------------------------------------
 

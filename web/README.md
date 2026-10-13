@@ -166,6 +166,7 @@ experience.
 | Add a tag | ⓘ → *Tags* | `T` |
 | Details / metadata | ⓘ button | `I` |
 | Hide / unhide | eye button (when hiding is set up) | — |
+| Copy the file's path (for a generate flow) | copy button, top right | — |
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
 
@@ -342,6 +343,38 @@ generate:
       negative: photo (medium), realistic, text, signature, watermark
       dropTags: [1girl, 1boy, solo]
 ```
+
+### Generating videos
+
+*Generate → MiniMax H3 · image to video* animates a gallery image with
+[MiniMax H3](https://www.minimax.io/blog/minimax-h3) in ComfyUI, as a video
+with sound:
+
+1. In the gallery viewer, tap **Copy path** (the copy button at the top right).
+   Then tap **Paste** on the video page (or paste the path into the field). The
+   image shows as a preview. Any image in a configured library works; hidden
+   ones only while unlocked.
+2. Write the prompt: what happens, camera, dialogue and sound. H3 follows timed
+   shots well, e.g. `[0s-2s] … [2s-5s] …`, plus an `Audio:` line.
+3. Pick a **length** (5, 8, 10, 12 or 15 s) and how many takes, then *Generate*.
+
+The image is uploaded into ComfyUI's input folder as `wg_<content hash>.<ext>`
+(so picking it again reuses the file) and becomes the first frame. Everything else
+is the official template's default: H3's native canvas (768 px short edge, at
+most 1344×768, matching the image's aspect ratio), 24 fps, and the 8-step turbo
+LoRA. Lengths are snapped up to H3's 17k+5 frame grid. As with images, the app
+runs `gpu-workload switch comfy` before queueing. A 5 s clip at 1344×768 takes
+about 4 minutes on a 16 GB card.
+
+The graph is `comfyui/workflows/minimax-h3-i2v.{api,ui}.json`, and the video
+carries the UI workflow and the source image's path. It needs these files in
+ComfyUI's `models/` (from `Comfy-Org/MiniMax-H3` and `lightx2v/Minimax-h3-Turbo`):
+`diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors`,
+`text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`,
+`vae/minimax_h3_video_vae_int8_convrot.safetensors`,
+`vae/minimax_h3_audio_vae_fp32.safetensors` and
+`loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors`.
+Check the MiniMax H3 license for where you may use the model and its outputs.
 
 ## Supported formats
 

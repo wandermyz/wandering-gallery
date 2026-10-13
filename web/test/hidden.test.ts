@@ -80,8 +80,12 @@ describe('hidden assets', () => {
     expect((await post(`/api/assets/${secret}/hidden`, { hidden: false })).statusCode).toBe(404);
     expect((await post(`/api/assets/${secret}/favorite`, { favorite: true })).statusCode).toBe(404);
     expect((await post(`/api/assets/${secret}/trash`)).statusCode).toBe(404);
+    // Nor can it be picked by path as a video flow's input.
+    const secretPath = path.join(env.lib('main'), 'f', 'secret.png');
+    expect((await post('/api/generate/video/image', { path: secretPath })).statusCode).toBe(404);
 
     const cookie = await unlockCookie();
+    expect((await post('/api/generate/video/image', { path: secretPath }, cookie)).json().asset).toMatchObject({ id: secret });
     expect((await get('/api/session', cookie)).json().unlockedForMs).toBeGreaterThan(890_000);
     expect(await names('/api/assets', cookie)).toEqual(['public.png', 'secret.png']);
     expect((await get('/api/libraries', cookie)).json().libraries[0].count).toBe(2);

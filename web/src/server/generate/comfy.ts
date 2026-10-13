@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { HttpError } from '../paths.js';
 
 /** An API-format ComfyUI graph: node id → { class_type, inputs }. */
@@ -32,6 +35,8 @@ export interface ComfyClient {
   /** Waits for a queued job, reporting progress. `signal` stops waiting (it does not cancel the job). */
   watch(promptId: string, onProgress: (p: Progress) => void, signal: AbortSignal): Promise<JobResult>;
   cancel(promptId: string): Promise<void>;
+  /** Copies a local file into ComfyUI's input folder as `name` (replacing one of that name). */
+  upload(file: string, name: string): Promise<void>;
 }
 
 interface Envelope {
@@ -185,6 +190,18 @@ export class CliComfyClient implements ComfyClient {
 
   async cancel(promptId: string) {
     this.data(await this.cli_(['--json', 'jobs', 'cancel', promptId]));
+  }
+
+  async upload(file: string, name: string) {
+    // comfy-cli uploads under the file's own name: link it into a scratch folder as `name`.
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wandering-gallery-'));
+    try {
+      const staged = path.join(dir, name);
+      await fs.promises.link(file, staged).catch(() => fs.promises.copyFile(file, staged));
+      this.data(await this.cli_(['--json', 'upload', '--overwrite', staged], { timeoutMs: 5 * 60_000 }));
+    } finally {
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    }
   }
 }
 
