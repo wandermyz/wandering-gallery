@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Stand-in for comfy-cli in the browser tests: the subcommands and JSON envelopes the
-// server uses (system-stats, run --wait, jobs status|watch|cancel), backed by
+// server uses (system-stats, jobs status|watch|cancel), backed by
 // fake-comfy.mjs at $COMFY_LOCAL_URL.
-import fs from 'node:fs';
 
 const base = process.env.COMFY_LOCAL_URL;
 const args = process.argv.slice(2).filter((a) => a !== '--json' && a !== '--json-stream');
@@ -25,17 +24,6 @@ const [cmd, sub, id] = args;
 if (cmd === 'system-stats') {
   const s = await get('/system_stats');
   s ? ok('system-stats', s) : down('system-stats');
-} else if (cmd === 'run') {
-  const graph = JSON.parse(fs.readFileSync(args[args.indexOf('--workflow') + 1], 'utf8'));
-  const r = await get('/fake/tags', { method: 'POST', body: JSON.stringify(graph) });
-  if (!r) down('run');
-  else {
-    // Remember the text output for the `jobs status` call that follows.
-    fs.writeFileSync(`${process.env.TMPDIR ?? '/tmp'}/wg-fake-tags.json`, JSON.stringify(r.text));
-    ok('run', { status: 'completed', prompt_id: 'tags-job' });
-  }
-} else if (cmd === 'jobs' && sub === 'status' && id === 'tags-job') {
-  ok('jobs status', { prompt_id: id, status: 'completed', outputs: [], text_outputs: { 14: [JSON.parse(fs.readFileSync(`${process.env.TMPDIR ?? '/tmp'}/wg-fake-tags.json`, 'utf8'))] } });
 } else if (cmd === 'jobs' && (sub === 'status' || sub === 'watch')) {
   for (;;) {
     const j = await get(`/fake/jobs/${id}`);

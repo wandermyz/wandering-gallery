@@ -5,6 +5,13 @@ export interface RunResult {
   stderr: string;
 }
 
+/** A tool that exited non-zero; `stdout` is kept for tools that report errors there. */
+export class ProcError extends Error {
+  constructor(message: string, readonly code: number | null, readonly stdout: string) {
+    super(message);
+  }
+}
+
 /**
  * Runs a tool with an argument vector (never through a shell), with a timeout
  * and an output cap. File paths are always absolute, so a filename beginning
@@ -41,7 +48,7 @@ export function run(cmd: string, args: string[], opts: { timeoutMs?: number; max
     child.on('close', (code) => {
       clearTimeout(timer);
       if (killed) return reject(new Error(`${cmd} timed out or produced too much output`));
-      if (code !== 0) return reject(new Error(`${cmd} exited with ${code}: ${err.trim().split('\n').pop() ?? ''}`));
+      if (code !== 0) return reject(new ProcError(`${cmd} exited with ${code}: ${err.trim().split('\n').pop() ?? ''}`, code, Buffer.concat(out).toString()));
       resolve({ stdout: Buffer.concat(out), stderr: err });
     });
   });

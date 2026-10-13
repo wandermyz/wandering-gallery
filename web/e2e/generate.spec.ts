@@ -22,6 +22,8 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await expect(page.locator('.topbar-sub')).toHaveText('ComfyUI · Fake GPU');
 
   await expect(page.getByRole('button', { name: 'Generate tags' })).toBeDisabled();
+  // Quality tags are prefilled.
+  await expect(page.locator('.gen-tags').first()).toHaveValue('masterpiece');
   await page.locator('#gen-prompt').fill('a girl at the beach');
   await page.getByRole('button', { name: 'More tag variations' }).click();
   await page.getByRole('button', { name: 'More tag variations' }).click();
@@ -29,8 +31,8 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await page.getByRole('button', { name: 'Generate tags' }).click();
 
   const tags = page.locator('.gen-tags');
-  await expect(tags.nth(0)).toHaveValue('1girl, base tags for a girl at the beach');
-  await expect(tags.nth(1)).toHaveValue('1girl, varied tags for a girl at the beach');
+  await expect(tags.nth(0)).toHaveValue('masterpiece, 1girl, base tags for a girl at the beach');
+  await expect(tags.nth(1)).toHaveValue('masterpiece, 1girl, varied tags for a girl at the beach');
   await expect(tags.nth(2)).toHaveValue(/varied tags/);
 
   // Edit one, drop one, regenerate one.
@@ -78,6 +80,20 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await expect(page.locator('.gen-run')).toHaveCount(0);
 });
 
+test('tags typed by hand generate images without a description', async ({ page }) => {
+  await page.goto('/generate/wai-illustrious-lora-mycat');
+  const tags = page.locator('.gen-tags').first();
+  await expect(tags).toHaveValue('masterpiece, mycat, cat');
+  await expect(page.getByRole('button', { name: 'Generate tags' })).toBeDisabled();
+  await tags.fill('masterpiece, mycat, cat, sleeping, sofa');
+  await page.getByRole('button', { name: 'Fewer images per variation' }).click();
+  await page.getByRole('button', { name: 'Generate 2 images' }).click();
+  const run = page.locator('.gen-run').first();
+  await expect(run.locator('.gen-run-prompt')).toHaveCount(0);
+  await expect(run.locator('.gen-run-tags')).toContainText('masterpiece, mycat, cat, sleeping, sofa');
+  await expect(run.locator('a.gen-thumb')).toHaveCount(2, { timeout: 20_000 });
+});
+
 test('a run still in progress shows again after a reload', async ({ page }) => {
   await page.goto(FLOW);
   await page.locator('#gen-prompt').fill('slow run');
@@ -111,10 +127,11 @@ test('shows an error when ComfyUI is not running', async ({ page }) => {
   await page.goto(FLOW);
   await expect(page.locator('.banner-error[role="alert"]')).toContainText('ComfyUI is not running at http://127.0.0.1:2397');
   await expect(page.locator('.topbar-sub')).toHaveText('ComfyUI offline');
-  await page.locator('#gen-prompt').fill('a cat');
-  await page.getByRole('button', { name: 'Generate tags' }).click();
-  await expect(page.locator('.toast-error')).toContainText(/not running/);
-  await expect(page.locator('.gen-tags').first()).toHaveValue('');
+  await page.locator('.gen-tags').first().fill('masterpiece, 1girl');
+  await page.getByRole('button', { name: 'Generate 3 images' }).click();
+  // The fake answers /prompt with a 503 rather than refusing the connection.
+  await expect(page.locator('.toast-error')).toContainText(/ComfyUI .*offline/);
+  await expect(page.locator('.gen-run')).toHaveCount(0);
 
   await comfyOnline(true);
   await page.getByRole('button', { name: 'Check again' }).click();
@@ -126,7 +143,7 @@ test('a LoRA flow has the same form, with its trigger tags in front', async ({ p
   await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · My cat LoRA');
   await page.locator('#gen-prompt').fill('a cat on a sofa');
   await page.getByRole('button', { name: 'Generate tags' }).click();
-  await expect(page.locator('.gen-tags').first()).toHaveValue(/^mycat, cat, 1girl, base tags for a cat on a sofa$/);
+  await expect(page.locator('.gen-tags').first()).toHaveValue('masterpiece, mycat, cat, 1girl, base tags for a cat on a sofa');
   await page.getByRole('button', { name: 'Fewer images per variation' }).click();
   await page.getByRole('button', { name: 'Generate 2 images' }).click();
   const run = page.locator('.gen-run').first();

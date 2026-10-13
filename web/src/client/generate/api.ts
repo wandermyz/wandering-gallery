@@ -6,6 +6,8 @@ export interface FlowInfo {
   ready: boolean;
   problem: string | null;
   promptsFile: string;
+  /** Quality tags plus the LoRA's tags, prefilled into variation 1. */
+  defaultTags: string;
 }
 
 export interface ComfyStatus {

@@ -3,6 +3,7 @@ import type { Db } from '../db.js';
 import { HttpError } from '../paths.js';
 import type { ComfyClient, OutputFile, Progress } from './comfy.js';
 import { randomSeed, type TagsFlow } from './flow.js';
+import type { Gpu } from './tools.js';
 
 export type JobStatus = 'pending' | 'queued' | 'running' | 'completed' | 'error' | 'cancelled';
 
@@ -45,7 +46,7 @@ export class Runs {
   private readonly runs = new Map<string, Run>();
   private readonly aborts = new Map<string, AbortController>();
 
-  constructor(private readonly comfy: ComfyClient, private readonly db: Db, private readonly outputLibrary: string | null,
+  constructor(private readonly comfy: ComfyClient, private readonly gpu: Gpu, private readonly db: Db, private readonly outputLibrary: string | null,
     private readonly log: { warn: (o: object, msg: string) => void } = { warn() {} }) {}
 
   /** Runs still being worked on, newest first. */
@@ -59,9 +60,13 @@ export class Runs {
     return r;
   }
 
-  /** Validates, queues every job and starts watching. Resolves once all jobs are queued. */
+  /**
+   * Validates, hands the GPU to ComfyUI, queues every job and starts watching. Resolves
+   * once all jobs are queued.
+   */
   async start(flow: TagsFlow, prompt: string, variations: string[], batch: number): Promise<Run> {
     flow.prompts(); // fail early when the prompts file is missing
+    await this.gpu.toComfy();
     const run: Run = {
       id: crypto.randomBytes(6).toString('hex'),
       flow: flow.id,

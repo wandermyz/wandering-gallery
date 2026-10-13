@@ -8,13 +8,12 @@ import { HttpError } from '../src/server/paths.js';
 import type { ComfyClient, Graph, JobResult, Progress } from '../src/server/generate/comfy.js';
 import { parseOutputUrl } from '../src/server/generate/comfy.js';
 import { TagsFlow } from '../src/server/generate/flow.js';
+import type { Gpu, Tagger } from '../src/server/generate/tools.js';
 import { makeEnv, makePng, ageAll, tmpDir, type Env } from './helpers.js';
 
 const REPO_WORKFLOWS = path.resolve(import.meta.dirname, '..', '..', 'comfyui', 'workflows');
 
 const PROMPTS = `
-systemPrompt: |-
-  SYSTEM PROMPT
 variationInstruction: VARY
 traits:
   - [red hair]
@@ -31,7 +30,6 @@ function writePrompts(dir: string, text = PROMPTS) {
 /** In-memory ComfyUI: jobs finish when the test says so. */
 class FakeComfy implements ComfyClient {
   online = true;
-  textGraphs: Graph[] = [];
   submitted: { id: string; graph: Graph; pnginfo: Record<string, unknown> }[] = [];
   cancelled: string[] = [];
   private waiters = new Map<string, { onProgress: (p: Progress) => void; resolve: (r: JobResult) => void }>();
@@ -43,11 +41,6 @@ class FakeComfy implements ComfyClient {
   async stats() {
     this.check();
     return { devices: [{ name: 'gpu', vramTotal: 16, vramFree: 8 }] };
-  }
-  async runText(graph: Graph) {
-    this.check();
-    this.textGraphs.push(graph);
-    return { '14': [`tags ${this.textGraphs.length}`] };
   }
   async submit(graph: Graph, pnginfo: Record<string, unknown>) {
     this.check();
@@ -76,6 +69,30 @@ class FakeComfy implements ComfyClient {
   }
 }
 
+/** Records what it is asked; `log` is shared with FakeGpu to check the order. */
+class FakeTagger implements Tagger {
+  requests: string[] = [];
+  release: (() => void) | null = null;
+  hold = false;
+  constructor(private readonly log: string[]) {}
+  async tags(description: string) {
+    this.requests.push(description);
+    this.log.push('tag start');
+    if (this.hold) await new Promise<void>((r) => (this.release = r));
+    this.log.push('tag end');
+    return `tags ${this.requests.length}`;
+  }
+}
+
+class FakeGpu implements Gpu {
+  fail = false;
+  constructor(private readonly log: string[]) {}
+  async toComfy() {
+    this.log.push('to comfy');
+    if (this.fail) throw new HttpError('Could not hand the GPU to ComfyUI. Strata is busy', 503);
+  }
+}
+
 const tick = () => new Promise((r) => setTimeout(r, 10));
 
 describe('generate flow graphs', () => {
@@ -90,33 +107,28 @@ describe('generate flow graphs', () => {
     }
   });
 
-  it('builds the tagging graph, plain and varied', () => {
-    const g = flow.tagGraph('a girl', false);
-    expect(Object.keys(g).sort()).toEqual(['10', '11', '14', '8', '9']);
-    expect(g['8'].inputs.value).toBe('a girl');
-    expect(g['9'].inputs.value).toBe('SYSTEM PROMPT');
-    expect(g['11'].inputs.sampling_mode).toBe('off');
-    expect(g['14']).toEqual({ class_type: 'PreviewAny', inputs: { source: ['11', 0] } });
-
-    const v = flow.tagGraph('a girl', true, () => 0.99);
-    expect(v['9'].inputs.value).toBe('SYSTEM PROMPT\n\nVARY');
-    expect(v['8'].inputs.value).toBe('a girl\n\nSuggested traits: red hair, green eyes');
-    expect(v['11'].inputs.sampling_mode).toBe('on');
-    expect(typeof v['11'].inputs['sampling_mode.seed']).toBe('number');
-    expect(flow.tagsFrom({ '14': ['  1girl, solo \n'] })).toBe('1girl, solo');
+  it('asks the tagger for the description, or a variation with suggested traits', () => {
+    expect(flow.tagRequest('a girl', false)).toBe('a girl');
+    expect(flow.tagRequest('a girl', true, () => 0.99)).toBe('a girl\n\nVARY\n\nSuggested traits: red hair, green eyes');
+    expect(flow.tagsFrom('  1girl, solo \n')).toBe('masterpiece, 1girl, solo');
+    expect(flow.tagsFrom('masterpiece, 1girl')).toBe('masterpiece, 1girl');
+    expect(() => flow.tagsFrom(' ')).toThrow(/no tags/);
+    expect(flow.info().defaultTags).toBe('masterpiece');
   });
 
   it('builds an image job with the literal tags and a restorable UI workflow', () => {
-    const { graph, pnginfo } = flow.imageJob('a girl', '1girl, solo', 42);
+    const { graph, pnginfo } = flow.imageJob('a girl', 'masterpiece, 1girl, solo', 42);
     expect(Object.keys(graph).sort()).toEqual(['1', '2', '3', '4', '5', '6', '7']);
     expect(graph['2'].inputs.text).toBe('masterpiece, 1girl, solo');
     expect(graph['3'].inputs.text).toBe('worst quality');
     expect(graph['5'].inputs.seed).toBe(42);
     expect(pnginfo.source_prompt).toBe('a girl');
-    expect(pnginfo.tags).toBe('1girl, solo');
+    expect(pnginfo.tags).toBe('masterpiece, 1girl, solo');
     const nodes = (pnginfo.workflow as { nodes: { id: number; widgets_values: unknown[] }[] }).nodes;
     const w = (id: number) => nodes.find((n) => n.id === id)!.widgets_values[0];
-    expect([w(8), w(9), w(12), w(3), w(5)]).toEqual(['a girl', 'SYSTEM PROMPT', 'masterpiece', 'worst quality', 42]);
+    expect([w(2), w(3), w(5)]).toEqual(['masterpiece, 1girl, solo', 'worst quality', 42]);
+    // Tags typed by hand, no description.
+    expect(flow.imageJob('', '1girl', 1).pnginfo).not.toHaveProperty('source_prompt');
   });
 
   it('builds LoRA flows from the same prompts with the trigger tags in front', () => {
@@ -124,11 +136,11 @@ describe('generate flow graphs', () => {
     const cfg = parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { promptsDir: path.join(dir, 'prompts'), loras: [lora] } }).generate;
     const [plain, f] = TagsFlow.all(cfg);
     expect(plain.id).toBe('wai-illustrious-tags');
-    expect(f.info()).toMatchObject({ id: 'wai-illustrious-lora-cat', title: 'WAI-Illustrious · Cat LoRA', ready: true });
-    expect(f.tagGraph('a cat', false)['9'].inputs.value).toBe('SYSTEM PROMPT');
-    expect(f.tagsFrom({ '14': ['1girl, cat, sitting, no humans'] })).toBe('mycat, cat, sitting, no humans');
+    expect(f.info()).toMatchObject({ id: 'wai-illustrious-lora-cat', title: 'WAI-Illustrious · Cat LoRA', ready: true, defaultTags: 'masterpiece, mycat, cat' });
+    expect(f.tagsFrom('1girl, cat, sitting, no humans')).toBe('masterpiece, mycat, cat, sitting, no humans');
 
-    const { graph, pnginfo } = f.imageJob('a cat', 'mycat, cat, sitting', 7);
+    const { graph, pnginfo } = f.imageJob('a cat', 'masterpiece, mycat, cat, sitting', 7);
+    expect(graph['2'].inputs.text).toBe('masterpiece, mycat, cat, sitting');
     expect(graph['15'].inputs).toMatchObject({ model: ['1', 0], lora_name: 'cat.safetensors', strength_model: 0.9 });
     expect(graph['5'].inputs.model).toEqual(['15', 0]);
     expect(graph['3'].inputs.text).toBe('worst quality, realistic');
@@ -138,8 +150,8 @@ describe('generate flow graphs', () => {
 
     // A per-flow file overrides keys of the shared one.
     fs.writeFileSync(path.join(dir, 'prompts', 'wai-illustrious-lora-cat.yaml'), 'traits:\n  - [sleeping, jumping]\n');
-    expect(f.tagGraph('a cat', true, () => 0)['8'].inputs.value).toBe('a cat\n\nSuggested traits: sleeping');
-    expect(plain.tagGraph('a cat', true, () => 0)['8'].inputs.value).toBe('a cat\n\nSuggested traits: red hair, blue eyes');
+    expect(f.tagRequest('a cat', true, () => 0)).toBe('a cat\n\nVARY\n\nSuggested traits: sleeping');
+    expect(plain.tagRequest('a cat', true, () => 0)).toBe('a cat\n\nVARY\n\nSuggested traits: red hair, blue eyes');
     fs.rmSync(path.join(dir, 'prompts', 'wai-illustrious-lora-cat.yaml'));
 
     expect(() => parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { loras: [{ id: 'X', lora: 'x' }] } })).toThrow(/lowercase/);
@@ -149,9 +161,9 @@ describe('generate flow graphs', () => {
   it('reports a missing or incomplete prompts file', () => {
     const other = tmpDir();
     const f = new TagsFlow(parseConfig({ libraries: [{ id: 'a', path: other }], generate: { promptsDir: other } }).generate);
-    expect(f.info()).toMatchObject({ ready: false, problem: expect.stringMatching(/prompts file not found.*systemPrompt/) });
-    writePrompts(other, 'systemPrompt: x\n');
-    expect(f.info().problem).toMatch(/missing: variationInstruction, traits, qualityTags, negativePrompt/);
+    expect(f.info()).toMatchObject({ ready: false, problem: expect.stringMatching(/prompts file not found.*variationInstruction/) });
+    writePrompts(other, 'variationInstruction: x\n');
+    expect(f.info().problem).toMatch(/missing: traits, qualityTags, negativePrompt/);
     writePrompts(other, PROMPTS.replace('- [red hair]', '- []'));
     expect(f.info().problem).toMatch(/traits must be/);
   });
@@ -167,6 +179,9 @@ describe('generate API', () => {
   let env: Env;
   let app: FastifyInstance;
   let comfy: FakeComfy;
+  let tagger: FakeTagger;
+  let gpu: FakeGpu;
+  let log: string[];
   afterEach(async () => {
     await app?.close();
     await env?.close();
@@ -178,8 +193,13 @@ describe('generate API', () => {
     if (prompts) writePrompts(promptsDir);
     env.cfg.generate.promptsDir = promptsDir;
     comfy = new FakeComfy();
-    app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, comfy });
+    log = [];
+    tagger = new FakeTagger(log);
+    gpu = new FakeGpu(log);
+    app = await build();
   }
+
+  const build = () => buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, generate: { comfy, tagger, gpu } });
 
   async function post(url: string, body: unknown = {}) {
     const csrf = (await app.inject({ url: '/api/session' })).json().csrf;
@@ -190,10 +210,10 @@ describe('generate API', () => {
     await setup();
     await app.close();
     env.cfg.generate.loras = [{ id: 'cat', title: 'Cat', lora: 'cat.safetensors', strength: 1, tags: 'mycat', negative: '', dropTags: [] }];
-    app = await buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, comfy });
+    app = await build();
     const flows = (await app.inject({ url: '/api/generate/flows' })).json().flows;
     expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat']);
-    expect((await post('/api/generate/flows/wai-illustrious-lora-cat/tags', { prompt: 'a cat' })).json().tags).toBe('mycat, tags 1');
+    expect((await post('/api/generate/flows/wai-illustrious-lora-cat/tags', { prompt: 'a cat' })).json().tags).toBe('masterpiece, mycat, tags 1');
     const run = (await post('/api/generate/flows/wai-illustrious-lora-cat/runs', { prompt: 'a cat', variations: ['mycat, x'], batch: 1 })).json();
     expect(run.flow).toBe('wai-illustrious-lora-cat');
     expect(comfy.submitted[0].graph['15'].inputs.lora_name).toBe('cat.safetensors');
@@ -207,19 +227,47 @@ describe('generate API', () => {
     expect((await app.inject({ url: '/api/generate/status' })).json()).toMatchObject({ online: false, error: expect.stringMatching(/not running/) });
   });
 
-  it('generates tags and reports ComfyUI being down', async () => {
+  it('generates tags with the tagger', async () => {
     await setup();
     const r = await post('/api/generate/flows/wai-illustrious-tags/tags', { prompt: 'a girl', vary: true });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ tags: 'tags 1' });
-    expect(comfy.textGraphs[0]['9'].inputs.value).toMatch(/VARY$/);
+    expect(r.json()).toEqual({ tags: 'masterpiece, tags 1' });
+    expect(tagger.requests[0]).toMatch(/^a girl\n\nVARY\n\nSuggested traits: /);
 
     expect((await post('/api/generate/flows/wai-illustrious-tags/tags', { prompt: ' ' })).statusCode).toBe(400);
     expect((await post('/api/generate/flows/nope/tags', { prompt: 'x' })).statusCode).toBe(404);
-    comfy.online = false;
-    const down = await post('/api/generate/flows/wai-illustrious-tags/tags', { prompt: 'a girl' });
-    expect(down.statusCode).toBe(503);
-    expect(down.json()).toMatchObject({ code: 'comfyui_down', error: expect.stringMatching(/not running/) });
+  });
+
+  it('hands the GPU to ComfyUI before queueing, never in the middle of tagging', async () => {
+    await setup();
+    tagger.hold = true;
+    const tagging = post('/api/generate/flows/wai-illustrious-tags/tags', { prompt: 'a girl' });
+    await tick();
+    const starting = post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a girl', variations: ['t'], batch: 1 });
+    await tick();
+    expect(log).toEqual(['tag start']);
+    tagger.release!();
+    expect((await tagging).statusCode).toBe(200);
+    expect((await starting).statusCode).toBe(200);
+    expect(log).toEqual(['tag start', 'tag end', 'to comfy']);
+    expect(comfy.submitted).toHaveLength(1);
+
+    gpu.fail = true;
+    const r = await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a girl', variations: ['t'], batch: 1 });
+    expect(r.statusCode).toBe(503);
+    expect(r.json().error).toMatch(/hand the GPU/);
+    expect(comfy.submitted).toHaveLength(1);
+  });
+
+  it('runs hand-typed tags without a description', async () => {
+    await setup();
+    const r = await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: '', variations: ['masterpiece, 1girl'], batch: 1 });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().prompt).toBe('');
+    expect(comfy.submitted[0].graph['2'].inputs.text).toBe('masterpiece, 1girl');
+    expect(comfy.submitted[0].pnginfo).not.toHaveProperty('source_prompt');
+    expect((await post('/api/generate/flows/wai-illustrious-tags/runs', { variations: ['x'], batch: 1 })).statusCode).toBe(200);
+    expect((await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a', variations: [' '], batch: 1 })).statusCode).toBe(400);
   });
 
   it('refuses to run without the prompts file', async () => {
@@ -239,7 +287,7 @@ describe('generate API', () => {
     const run = r.json();
     expect(run.jobs.map((j: { variation: number; index: number; status: string }) => [j.variation, j.index, j.status]))
       .toEqual([[0, 0, 'queued'], [0, 1, 'queued'], [1, 0, 'queued'], [1, 1, 'queued']]);
-    expect(comfy.submitted.map((s) => s.graph['2'].inputs.text)).toEqual(['masterpiece, tags a', 'masterpiece, tags a', 'masterpiece, tags b', 'masterpiece, tags b']);
+    expect(comfy.submitted.map((s) => s.graph['2'].inputs.text)).toEqual(['tags a', 'tags a', 'tags b', 'tags b']);
     expect(new Set(comfy.submitted.map((s) => s.graph['5'].inputs.seed)).size).toBe(4);
 
     const get = async () => (await app.inject({ url: `/api/generate/runs/${run.id}` })).json();

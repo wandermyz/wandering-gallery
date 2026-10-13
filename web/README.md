@@ -46,7 +46,8 @@ saved under an old name gets a fresh entry and doesn't inherit the old rating.
 - `ffmpeg` and `ffprobe` on the PATH or configured in the config file (only
   needed for video thumbnails and video metadata).
 - For the Generate section: a running ComfyUI and
-  [comfy-cli](https://github.com/Comfy-Org/comfy-cli) on the PATH.
+  [comfy-cli](https://github.com/Comfy-Org/comfy-cli) on the PATH, plus
+  `danbooru-tagger` and `gpu-workload` (both optional to configure; see below).
 
 ## Install
 
@@ -259,13 +260,16 @@ image.
 ### Generating images
 
 *Generate → WAI-Illustrious · prompt to tags* turns a description (Chinese or
-English) into Danbooru tags with Qwen inside ComfyUI, then renders them with
-WAI-Illustrious:
+English) into Danbooru tags with `danbooru-tagger` (the local LLM plus a
+Danbooru tag index), then renders them with WAI-Illustrious in ComfyUI:
 
 1. Type the description and choose how many **tag variations** you want, then
-   *Generate tags*. Variation 1 follows the description; the others ask for a
-   distinct-looking character (random suggested traits, sampling on).
-2. Edit any variation's tags, regenerate or remove single ones.
+   *Generate tags*. Variation 1 follows the description; the others add the
+   `variationInstruction` and random suggested traits, so each one is distinct.
+2. Every variation's text is the literal positive prompt. It starts out with the
+   quality tags (and a LoRA flow's tags); generated tags are added after them.
+   Edit any variation, regenerate or remove single ones, or skip the description
+   and type the tags yourself.
 3. Choose **images per variation** and *Generate*. Every variation × image is a
    ComfyUI job with its own random seed. Progress and finished images show under
    *Runs*; tapping one opens it in the gallery viewer, and *Reuse* puts a run's
@@ -274,12 +278,19 @@ WAI-Illustrious:
 Nothing is kept: a reload starts with an empty form and only shows runs that are
 still being worked on. Finished images are in the gallery.
 
-Each PNG carries the UI workflow, the source description and the tags, so it can
-be dragged back into ComfyUI.
+Each PNG carries the UI workflow, the source description (if any) and the tags,
+so it can be dragged back into ComfyUI.
 
-ComfyUI is driven through `comfy-cli` (`run`, `jobs status/watch/cancel`,
-`system-stats`); only the image jobs are posted to ComfyUI's `/prompt` directly,
-because `comfy-cli run` can't attach that PNG metadata. If ComfyUI isn't running,
+**One GPU, two workloads.** The tagger's LLM and ComfyUI can't share the GPU.
+`danbooru-tagger` claims it for the LLM (waiting for ComfyUI's queue to drain),
+and before queueing any image job the app runs `gpu-workload switch comfy`. The
+server takes these one at a time, so starting a run never unloads the LLM in the
+middle of a tagging request. If the switch fails, nothing is queued and the page
+shows why.
+
+ComfyUI is driven through `comfy-cli` (`jobs status/watch/cancel`,
+`system-stats`); the image jobs are posted to ComfyUI's `/prompt` directly,
+because `comfy-cli run` can't attach the PNG metadata. If ComfyUI isn't running,
 the page says so; the app never starts it.
 
 The workflow graphs are in `comfyui/workflows/` with every prompt blanked. The
@@ -287,14 +298,12 @@ prompt texts are local only, in
 `~/.config/wandering-gallery/prompts/wai-illustrious-tags.yaml`:
 
 ```yaml
-systemPrompt: |-          # tagger system prompt (Qwen)
-  ...
-variationInstruction: |-  # appended for variations 2..N
+variationInstruction: |-  # added to the description for variations 2..N
   ...
 traits:                   # one random entry per list is suggested to variations 2..N
   - [<hair color>, <hair color>, ...]
   - [<eye color>, <eye color>, ...]
-qualityTags: ...          # put in front of the tags
+qualityTags: ...          # prefilled at the start of every variation
 negativePrompt: ...
 ```
 
@@ -305,6 +314,8 @@ The file is read on every request, so edits apply without a restart. Settings
 generate:
   comfyui: http://127.0.0.1:8188   # ComfyUI server
   comfyCli: comfy-cli              # comfy-cli executable
+  tagger: danbooru-tagger          # description -> tags
+  gpuWorkload: gpu-workload        # run before ComfyUI jobs; false if the GPU isn't shared
   outputLibrary: comfyui           # library holding ComfyUI's output folder
   promptsDir: ~/.config/wandering-gallery/prompts
 ```
@@ -314,8 +325,8 @@ generate:
 Each entry under `generate.loras` adds a flow *Generate → WAI-Illustrious · <title>*,
 at `/generate/wai-illustrious-lora-<id>`, with the same form. It uses
 `comfyui/workflows/wai-illustrious-lora-tags.*.json`, the same graph with a
-`LoraLoaderModelOnly` node. Its generated tags start with the LoRA's `tags`, and
-`dropTags` are removed from them. `negative` is appended to the negative prompt.
+`LoraLoaderModelOnly` node. Its variations start with the quality tags and the
+LoRA's `tags`, and `dropTags` are removed from generated tags. `negative` is appended to the negative prompt.
 The flow uses the same prompts file; an optional
 `<promptsDir>/wai-illustrious-lora-<id>.yaml` overrides any of its keys, e.g.
 `variationInstruction` and `traits` that change the scene instead of the character.

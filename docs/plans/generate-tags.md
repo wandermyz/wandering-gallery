@@ -1,6 +1,6 @@
 # Plan: first generation flow (prompt → tags → images)
 
-Status: implemented · 2026-10-10
+Status: implemented · 2026-10-10 · tagging moved to danbooru-tagger on 2026-10-12 (see web/README.md)
 
 ## Goal
 
