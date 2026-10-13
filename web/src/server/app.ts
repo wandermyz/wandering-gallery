@@ -8,7 +8,8 @@ import { Captions, CAPTION_STATUSES, parseCaptionRequest } from './captions.js';
 import { CAPTION_JOIN, TAG_SEP, type AssetRow, type Db } from './db.js';
 import { registerGenerate, type GenerateDeps } from './generate/routes.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
-import { videoPlayability, mediaType } from './media.js';
+import { markdownRefs, readMarkdown, resolveRef } from './markdown.js';
+import { videoPlayability, mediaType, ownsSidecars } from './media.js';
 import { unquoteJsonString, type GenerationSummary } from './metadata/comfyui.js';
 import { checkFolder, HttpError, isInside, resolveInside } from './paths.js';
 import { checkTagName, Tags } from './tags.js';
@@ -239,9 +240,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get('/api/libraries', async (req) => {
     const counts = new Map(
-      db.all<{ library_id: string; n: number; images: number; videos: number }>(
-        `SELECT library_id, count(*) AS n, sum(kind = 'image') AS images, sum(kind = 'video') AS videos
-         FROM assets WHERE status = 'ready' AND ${visible(req)} GROUP BY library_id`,
+      db.all<{ library_id: string; n: number; images: number; videos: number; documents: number }>(
+        `SELECT library_id, count(*) AS n, sum(kind = 'image') AS images, sum(kind = 'video') AS videos,
+           sum(kind = 'markdown') AS documents FROM assets WHERE status = 'ready' AND ${visible(req)} GROUP BY library_id`,
       ).map((r) => [r.library_id, r]),
     );
     const unlocked = unlock.isUnlocked(req);
@@ -251,7 +252,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         const c = counts.get(l.id);
         return {
           id: l.id, name: l.name, writable: l.writable, recursive: l.recursive, showInAll: l.showInAll, hidden: l.hidden,
-          count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0,
+          count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0, documents: c?.documents ?? 0,
           available: !!s.realRoot, error: s.error, scanning: s.scanning, lastScanMs: s.lastScanMs,
         };
       }),
@@ -340,7 +341,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       where.push('rating >= ?');
       params.push(minRating);
     }
-    if (q.kind === 'image' || q.kind === 'video') {
+    if (q.kind === 'image' || q.kind === 'video' || q.kind === 'markdown') {
       where.push('kind = ?');
       params.push(q.kind);
     }
@@ -426,14 +427,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     writable: c.writable,
   });
 
-  app.get('/api/assets/:id/caption', async (req, reply) => {
+  /** Documents have no caption sidecars (see ownsSidecars). */
+  const captionAsset = (req: FastifyRequest) => {
     const row = getAsset(req);
+    if (!ownsSidecars(row.name)) throw new HttpError('documents have no caption', 400);
+    return row;
+  };
+
+  app.get('/api/assets/:id/caption', async (req, reply) => {
+    const row = captionAsset(req);
     reply.header('Cache-Control', 'no-store');
     return captionJson(await captions.get(row));
   });
 
   app.post('/api/assets/:id/caption', async (req) => {
-    const row = getAsset(req);
+    const row = captionAsset(req);
     return captionJson(await captions.act(row, parseCaptionRequest(req.body)));
   });
 
@@ -495,6 +503,33 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (type) reply.type(type.mime);
     // send() handles Range requests (video scrubbing), ETag and HEAD.
     return reply.sendFile(path.basename(file), path.dirname(file), { cacheControl: false, dotfiles: 'allow', contentType: false });
+  });
+
+  /**
+   * A Markdown document's text, with every file it refers to resolved to a gallery
+   * asset (relative to the document's folder, in its library). A reference to a hidden
+   * asset resolves to null while locked, exactly like one to a file that is not there.
+   */
+  app.get('/api/assets/:id/markdown', async (req, reply) => {
+    const row = getAsset(req, ['ready', 'trashed']);
+    if (row.kind !== 'markdown') throw new HttpError('not a document', 400);
+    let text: string;
+    try {
+      text = await readMarkdown(await assetFile(row));
+    } catch (err) {
+      throw new HttpError(`Could not read the document: ${(err as Error).message}`, 422);
+    }
+    const unlocked = unlock.isUnlocked(req);
+    const refs: Record<string, ReturnType<typeof toJson> | null> = {};
+    for (const ref of markdownRefs(text)) {
+      const rel = resolveRef(ref, row.folder);
+      if (rel === null) continue;
+      const target = db.liveAt(row.library_id, rel);
+      refs[ref] = target && (unlocked || !isHidden(target)) ? toJson(req, db.asset(target.id)!) : null;
+    }
+    // What resolves depends on the unlock, so it is never cached.
+    reply.header('Cache-Control', 'no-store');
+    return { text, refs };
   });
 
   // ---- Mutations ----------------------------------------------------------------
@@ -633,7 +668,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const rel = lib && path.relative(lib.path, p).split(path.sep).join('/');
     const row = lib && rel ? db.liveAt(lib.id, rel) : undefined;
     if (!row || (isHidden(row) && !unlock.isUnlocked(req))) throw new HttpError('not an image in the gallery', 404);
-    if (row.kind !== 'image') throw new HttpError('pick an image, not a video', 400);
+    if (row.kind !== 'image') throw new HttpError(`pick an image, not a ${row.kind === 'video' ? 'video' : 'document'}`, 400);
     return { row, asset: toJson(req, row), file: await assetFile(row) };
   };
 

@@ -187,6 +187,12 @@ function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: 
           {formatDuration(a.duration)}
         </span>
       )}
+      {a.kind === 'markdown' && (
+        <span class="badge-video" aria-label="Document">
+          <Icon name="doc" size={11} />
+          MD
+        </span>
+      )}
       {a.favorite && (
         <span class="badge-fav" aria-label="Favorite">
           <Icon name="heart" size={14} />

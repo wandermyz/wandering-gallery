@@ -4,7 +4,7 @@ import type { AppConfig } from './config.js';
 import type { AssetRow, Db } from './db.js';
 import { looksComplete } from './fileinfo.js';
 import type { Indexer } from './indexer.js';
-import { sidecarNames } from './media.js';
+import { ownsSidecars, sidecarNames } from './media.js';
 import { HttpError, isInside, resolveInside, resolveTargetInside } from './paths.js';
 
 /**
@@ -62,6 +62,7 @@ function fsMessage(err: unknown): string {
  * Symlinked sidecars are left alone.
  */
 async function moveSidecars(fromDir: string, fromName: string, toDir: string, toName: string) {
+  if (!ownsSidecars(fromName)) return;
   const from = sidecarNames(fromName);
   const to = sidecarNames(toName);
   const done: [string, string][] = [];
@@ -81,6 +82,7 @@ async function moveSidecars(fromDir: string, fromName: string, toDir: string, to
 }
 
 async function sidecarsExist(dir: string, name: string): Promise<boolean> {
+  if (!ownsSidecars(name)) return false;
   const n = sidecarNames(name);
   return (await exists(path.join(dir, n.txt))) || (await exists(path.join(dir, n.json)));
 }
@@ -254,7 +256,7 @@ export class Trash {
     const file = this.trashFile(row);
     const names = sidecarNames(row.name);
     try {
-      for (const n of [names.txt, names.json]) await fs.promises.rm(path.join(path.dirname(file), n), { force: true });
+      if (ownsSidecars(row.name)) for (const n of [names.txt, names.json]) await fs.promises.rm(path.join(path.dirname(file), n), { force: true });
       await fs.promises.rm(file, { force: true });
     } catch (err) {
       throw new HttpError(`Could not delete file: ${fsMessage(err)}`, 500);

@@ -7,7 +7,7 @@ import type { AppConfig, LibraryConfig } from './config.js';
 import { effectiveStatus, hasCandidate, readSidecars, sigOf } from './captions.js';
 import type { AssetRow, CaptionRow, Db } from './db.js';
 import { fingerprint, looksComplete } from './fileinfo.js';
-import { isIgnoredName, mediaType, sidecarNames, sidecarStem } from './media.js';
+import { isIgnoredName, mediaType, ownsSidecars, sidecarNames, sidecarStem } from './media.js';
 import { extract } from './metadata/extract.js';
 import { checkRelPath, isInside, toPosix } from './paths.js';
 import { folderOf, statEntry, walkLibrary, type FileEntry } from './scanner.js';
@@ -334,7 +334,7 @@ export class Indexer extends EventEmitter {
     const changed: number[] = [];
     for (const row of rows) {
       if (this.stopped) break;
-      if (unreadable(row.rel_path)) continue;
+      if (unreadable(row.rel_path) || !ownsSidecars(row.name)) continue;
       const names = sidecarNames(row.name);
       const prefix = row.folder ? row.folder + '/' : '';
       if ((onDisk.get(prefix + names.txt) ?? null) === row.txt_sig && (onDisk.get(prefix + names.json) ?? null) === row.json_sig) continue;
@@ -350,7 +350,7 @@ export class Indexer extends EventEmitter {
    */
   async syncCaption(row: CaptionOwner): Promise<boolean> {
     const state = this.libs.get(row.library_id);
-    if (!state?.realRoot) return false;
+    if (!state?.realRoot || !ownsSidecars(row.name)) return false;
     const names = sidecarNames(row.name);
     const prefix = row.folder ? row.folder + '/' : '';
     const [t, j] = await Promise.all([statEntry(state.realRoot, prefix + names.txt), statEntry(state.realRoot, prefix + names.json)]);

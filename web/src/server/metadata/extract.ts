@@ -5,6 +5,7 @@ import { readExifStrings, readPngInfo } from './readers.js';
 import { parseJsonLoose, summarize, searchText, type GenerationSummary } from './comfyui.js';
 import { run } from '../proc.js';
 import type { MediaKind } from '../media.js';
+import { markdownSummary, readMarkdown } from '../markdown.js';
 
 export interface Extracted {
   width: number | null;
@@ -152,5 +153,12 @@ async function extractVideo(file: string, opts: ExtractOptions): Promise<Extract
 
 export async function extract(file: string, kind: MediaKind, opts: ExtractOptions): Promise<Extracted> {
   await fs.promises.access(file, fs.constants.R_OK);
+  if (kind === 'markdown') return extractMarkdown(file);
   return kind === 'video' ? extractVideo(file, opts) : extractImage(file);
+}
+
+/** Documents carry no generation metadata; their text goes into the search index. */
+async function extractMarkdown(file: string): Promise<Extracted> {
+  const { title, body } = markdownSummary(await readMarkdown(file));
+  return { ...build({}, {}), searchText: [title, body].filter(Boolean).join('\n').toLowerCase().slice(0, 64 * 1024) };
 }

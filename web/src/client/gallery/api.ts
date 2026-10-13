@@ -9,6 +9,7 @@ export interface Library {
   count: number;
   images: number;
   videos: number;
+  documents: number;
   available: boolean;
   error: string | null;
   scanning: boolean;
@@ -23,7 +24,7 @@ export interface Asset {
   filePath: string | null;
   folder: string;
   name: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'markdown';
   mime: string;
   size: number;
   mtimeMs: number;
@@ -147,7 +148,7 @@ export interface Query {
   recursive?: boolean;
   favorite?: boolean;
   minRating?: number;
-  kind?: 'image' | 'video';
+  kind?: 'image' | 'video' | 'markdown';
   caption?: CaptionFilter;
   tag?: string;
   order?: 'asc' | 'desc';
@@ -233,6 +234,8 @@ export const api = {
       cursor, limit,
     })}`),
   asset: (id: number) => request<Asset>('GET', `/api/assets/${id}`),
+  /** A document's text, and the gallery asset each URL in it resolves to (null: missing or hidden). */
+  markdown: (id: number) => request<{ text: string; refs: Record<string, Asset | null> }>('GET', `/api/assets/${id}/markdown`),
   metadata: (id: number) => request<MetadataResponse>('GET', `/api/assets/${id}/metadata`),
   raw: async (id: number, which: 'prompt' | 'workflow') => {
     const r = await fetch(`/api/assets/${id}/raw/${which}`);
