@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'markdown';
 
 interface TypeInfo {
   kind: MediaKind;
@@ -18,6 +18,8 @@ const TYPES: Record<string, TypeInfo> = {
   '.m4v': { kind: 'video', mime: 'video/mp4' },
   '.webm': { kind: 'video', mime: 'video/webm' },
   '.mov': { kind: 'video', mime: 'video/quicktime' },
+  '.md': { kind: 'markdown', mime: 'text/markdown; charset=utf-8' },
+  '.markdown': { kind: 'markdown', mime: 'text/markdown; charset=utf-8' },
 };
 
 export function mediaType(file: string): TypeInfo | null {
@@ -40,6 +42,14 @@ export function sidecarStem(name: string): string | null {
   if (name.endsWith(CAPTION_JSON) && name.length > CAPTION_JSON.length) return name.slice(0, -CAPTION_JSON.length);
   if (name.endsWith(TXT) && name.length > TXT.length) return name.slice(0, -TXT.length);
   return null;
+}
+
+/**
+ * Whether a file can own caption sidecars. Documents cannot, so `story.md` next to
+ * `story.png` never claims (or moves, or deletes) the image's `story.txt`.
+ */
+export function ownsSidecars(name: string): boolean {
+  return mediaType(name)?.kind !== 'markdown';
 }
 
 /** Caption sidecar names for a media file name. */

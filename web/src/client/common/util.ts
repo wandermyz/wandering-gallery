@@ -76,3 +76,6 @@ export const CAPTION_LABELS: Record<string, string> = {
 
 /** Fired by the app when the server reports changed caption sidecars (detail: asset ids). */
 export const CAPTION_EVENT = 'wg:captions';
+
+/** Fired by the app when this browser is locked or unlocked (what hidden assets it may see changed). */
+export const LOCK_EVENT = 'wg:lock';

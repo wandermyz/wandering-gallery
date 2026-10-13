@@ -35,6 +35,7 @@ const PATHS: Record<string, string> = {
   tag: 'M3 12.2V4a1 1 0 011-1h8.2a1 1 0 01.7.3l8.4 8.4a1 1 0 010 1.4l-8.2 8.2a1 1 0 01-1.4 0l-8.4-8.4a1 1 0 01-.3-.7zM7.5 7.5h.01',
   search: 'M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4',
   flask: 'M9 3h6M10 3v6l-5.4 9.2A1.9 1.9 0 006.2 21h11.6a1.9 1.9 0 001.6-2.8L14 9V3M7.2 15h9.6',
+  doc: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
 };
 
 const FILLED = new Set(['heart', 'star', 'play']);

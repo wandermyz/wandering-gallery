@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import { markdownCard } from './markdown.js';
 import { run } from './proc.js';
 import type { MediaKind } from './media.js';
 
@@ -68,7 +69,7 @@ function ensureResized(file: string, kind: MediaKind, out: string, opts: ThumbOp
     const tmp = `${out}.${process.pid}.tmp`;
     return withSlot(async () => {
       try {
-        const input = kind === 'video' ? await videoFrame(file, opts) : file;
+        const input = kind === 'video' ? await videoFrame(file, opts) : kind === 'markdown' ? await markdownCard(file, opts.size) : file;
         await sharp(input, { failOn: 'none', limitInputPixels: 2 ** 28 })
           .rotate()
           .resize({ width: opts.size, height: opts.size, fit: 'inside', withoutEnlargement: true })

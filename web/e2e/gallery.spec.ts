@@ -469,3 +469,78 @@ test('originals are unchanged by browsing and organising', async () => {
   expect(names).toContain('gen_00001_.png');
   expect(names.filter((n) => n.includes('restored'))).toEqual([]);
 });
+
+test('Markdown documents render with their embedded images and videos, and can be hidden', async ({ page, request }, info) => {
+  await openGallery(page, 'gallery?lib=lib&folder=story');
+  const cell = page.locator('.cell[aria-label="tale.md"]');
+  await expect(cell.locator('.badge-video')).toHaveText('MD');
+  await cell.click();
+  await expect(page.locator('.viewer-name')).toHaveText('tale.md');
+  const doc = page.locator('.slide.active .md');
+  await expect(doc.locator('h1')).toHaveText('The Tale');
+  // The embedded image is the gallery's own (thumbnail-free) file URL, and it loads.
+  const img = doc.locator('img[alt="The scene"]');
+  await expect(img).toHaveAttribute('src', /\/api\/assets\/\d+\/file\?v=/);
+  await img.evaluate((el: HTMLImageElement) => el.decode());
+  expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(600);
+  // It fits the column.
+  const box = (await img.boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const video = doc.locator('video');
+  await expect(video).toHaveAttribute('src', /\/api\/assets\/\d+\/file\?v=/);
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(video).toHaveAttribute('playsinline', '');
+  await video.scrollIntoViewIfNeeded();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+
+  // Hiding the embedded image hides it in the document too, until unlocked.
+  const secretSrc = await doc.locator('img').nth(1).getAttribute('src');
+  const secretId = Number(/assets\/(\d+)\//.exec(secretSrc!)![1]);
+  const csrf = (await (await request.get('/api/session')).json()).csrf;
+  await request.post(`/api/assets/${secretId}/hidden`, { data: { hidden: true }, headers: { 'x-csrf-token': csrf } });
+  await page.reload();
+  await expect(doc.locator('h1')).toHaveText('The Tale');
+  await expect(doc.locator('img')).toHaveCount(1);
+  await expect(doc.locator('.md-missing')).toHaveCount(1);
+  // Showing it again needs the unlock (this request context's own session).
+  await request.post('/api/unlock', { data: { passphrase: 'e2e passphrase' }, headers: { 'x-csrf-token': csrf } });
+  expect((await request.post(`/api/assets/${secretId}/hidden`, { data: { hidden: false }, headers: { 'x-csrf-token': csrf } })).ok()).toBe(true);
+  await request.post('/api/lock', { headers: { 'x-csrf-token': csrf } });
+
+  // A link to an asset opens it in the viewer.
+  await doc.getByRole('link', { name: 'the scene' }).click();
+  await expect(page.locator('.viewer-name')).toHaveText('scene.png');
+  await page.goBack();
+  await expect(page.locator('.viewer-name')).toHaveText('tale.md');
+
+  if (isMobile(info.project.name)) {
+    // Vertical drags scroll the document; a horizontal swipe moves to the next item.
+    const scroller = page.locator('.slide.active .md-scroll');
+    const { width, height } = page.viewportSize()!;
+    await scroller.evaluate((el) => el.scrollTo(0, 0));
+    await touch(page, swipe(line({ x: width / 2, y: height * 0.7 }, { x: width / 2, y: height * 0.3 })));
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(50);
+    await expect(page.locator('.viewer-name')).toHaveText('tale.md');
+    // (tale.md is the last item, so the swipe goes back and then forward again.)
+    await touch(page, swipe(line({ x: width * 0.1, y: height / 2 }, { x: width * 0.85, y: height / 2 })));
+    await expect(page.locator('.viewer-name')).not.toHaveText('tale.md');
+    await touch(page, swipe(line({ x: width * 0.85, y: height / 2 }, { x: width * 0.1, y: height / 2 })));
+    await expect(page.locator('.viewer-name')).toHaveText('tale.md');
+  }
+
+  // Hidden like an image: it leaves the grid while locked.
+  await page.getByRole('button', { name: 'Hide', exact: true }).click();
+  await expect(page.locator('.viewer-name')).not.toHaveText('tale.md');
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await expect(page.locator('.cell[aria-label="tale.md"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show hidden items' }).click();
+  await page.getByLabel('Passphrase').fill('e2e passphrase');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.locator('.cell[aria-label="tale.md"]').click();
+  await expect(page.locator('.slide.active .md h1')).toHaveText('The Tale');
+  await page.getByRole('button', { name: 'Unhide' }).click();
+  await page.getByRole('button', { name: 'Back to gallery' }).click();
+  await page.getByRole('button', { name: 'Hidden items are shown' }).click();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(page.locator('.cell[aria-label="tale.md"]')).toHaveCount(1);
+});

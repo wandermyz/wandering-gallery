@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
+import { api, displayUrl, fileUrl, thumbUrl, type Asset } from './api';
 import { Icon, IconButton, Spinner, Stars } from '../common/ui';
 import { InfoPanel } from './InfoPanel';
-import { copyText, cx, formatBytes, formatDate, formatDuration } from '../common/util';
+import { copyText, cx, formatBytes, formatDate, formatDuration, LOCK_EVENT } from '../common/util';
 
 interface Zoom {
   s: number;
@@ -31,6 +31,8 @@ export interface ViewerProps {
   /** The asset changed (e.g. its tags were edited in the details panel). */
   onAssetChange: (a: Asset) => void;
   onOpenTag: (name: string) => void;
+  /** A document linked to another gallery asset. */
+  onOpenAsset: (id: number) => void;
   writable: (a: Asset) => boolean;
 }
 
@@ -248,6 +250,8 @@ export function Viewer(props: ViewerProps) {
     const down = (e: PointerEvent) => {
       if (interactive(e) || isVideoControls(e) || animating.current) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // A mouse selects text in a document (capturing the pointer would stop that).
+      if (e.pointerType === 'mouse' && (e.target as HTMLElement).closest('.md-scroll')) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
         stage.setPointerCapture(e.pointerId);
@@ -298,6 +302,8 @@ export function Viewer(props: ViewerProps) {
         moved = true;
         if (startZoom.s > 1.01) mode = 'pan';
         else if (e.pointerType === 'mouse') mode = 'none';
+        // Documents scroll vertically (natively); only a horizontal swipe moves on.
+        else if ((e.target as HTMLElement).closest('.md-scroll')) mode = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'swipe' : 'none';
         else if (Math.abs(dx) > Math.abs(dy)) mode = 'swipe';
         else if (dy > 0) mode = 'dismiss';
         else mode = 'none';
@@ -444,12 +450,12 @@ export function Viewer(props: ViewerProps) {
   const writable = props.writable(asset);
 
   return (
-    <div class={cx('viewer', !chrome && 'chrome-hidden', info && 'info-open', zoomed && 'zoomed')} role="dialog" aria-modal="true" aria-label={asset.name}>
+    <div class={cx('viewer', !chrome && 'chrome-hidden', info && 'info-open', zoomed && 'zoomed', asset.kind === 'markdown' && 'doc')} role="dialog" aria-modal="true" aria-label={asset.name}>
       <div class="viewer-main">
         <div class="stage" ref={stageRef}>
           <div class="track" ref={trackRef}>
             {prev && <Slide key={prev.id} asset={prev} pos={-1} active={false} />}
-            <Slide key={asset.id} asset={asset} pos={0} active zoomRef={(el) => (zoomElRef.current = el)} />
+            <Slide key={asset.id} asset={asset} pos={0} active zoomRef={(el) => (zoomElRef.current = el)} onOpenAsset={props.onOpenAsset} />
             {next && <Slide key={next.id} asset={next} pos={1} active={false} />}
           </div>
         </div>
@@ -518,11 +524,21 @@ export function Viewer(props: ViewerProps) {
   );
 }
 
-function Slide({ asset: a, pos, active, zoomRef }: { asset: Asset; pos: number; active: boolean; zoomRef?: (el: HTMLDivElement | null) => void }) {
+function Slide({ asset: a, pos, active, zoomRef, onOpenAsset }: {
+  asset: Asset; pos: number; active: boolean; zoomRef?: (el: HTMLDivElement | null) => void; onOpenAsset?: (id: number) => void;
+}) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const style = { transform: `translate3d(${pos * 100}%,0,0)` };
   const cls = cx('slide', active && 'active');
+
+  if (a.kind === 'markdown') {
+    return (
+      <div class={cx(cls, 'slide-doc')} style={style}>
+        {active ? <MarkdownDoc asset={a} onOpenAsset={onOpenAsset} /> : <img class="media ph" src={thumbUrl(a)} alt="" draggable={false} />}
+      </div>
+    );
+  }
 
   if (a.kind === 'video') {
     const unsupported = a.playable === 'no' || failed;
@@ -591,6 +607,74 @@ function Slide({ asset: a, pos, active, zoomRef }: { asset: Asset; pos: number; 
           </a>
         </div>
       )}
+    </div>
+  );
+}
+
+type Renderer = typeof import('./markdown');
+let renderer: Promise<Renderer> | null = null;
+
+/**
+ * A rendered Markdown document. Its embedded images and videos are gallery assets
+ * resolved by the server, so it is fetched again whenever the lock changes.
+ */
+function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (id: number) => void }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lockRev, setLockRev] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const on = () => setLockRev((n) => n + 1);
+    window.addEventListener(LOCK_EVENT, on);
+    return () => window.removeEventListener(LOCK_EVENT, on);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setError(null);
+    if (!lockRev) setHtml(null);
+    renderer ??= import('./markdown');
+    Promise.all([api.markdown(a.id), renderer]).then(
+      ([doc, r]) => alive && setHtml(r.renderMarkdown(doc.text, doc.refs)),
+      (e) => {
+        if (!alive) return;
+        setHtml(null);
+        setError((e as Error).message);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [a.id, a.v, lockRev]);
+
+  // Keyboard scrolling (space, page and arrow keys up/down) works once it has focus.
+  useEffect(() => {
+    if (html !== null && !lockRev) scrollRef.current?.focus({ preventScroll: true });
+  }, [html !== null]);
+
+  const onClick = (e: MouseEvent) => {
+    const link = (e.target as HTMLElement).closest('a[data-asset]');
+    if (!link) return;
+    e.preventDefault();
+    onOpenAsset?.(Number(link.getAttribute('data-asset')));
+  };
+
+  if (error) {
+    return (
+      <div class="media-msg no-gesture">
+        <Icon name="alert" size={28} />
+        <p>This document could not be displayed: {error}</p>
+        <a class="btn" href={`${fileUrl(a)}&download=1`} download={a.name}>
+          <Icon name="download" size={18} /> Download
+        </a>
+      </div>
+    );
+  }
+  if (html === null) return <div class="slide-loading"><Spinner /></div>;
+  return (
+    <div class="md-scroll" ref={scrollRef} tabIndex={-1} onClick={onClick}>
+      <article class="md" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }

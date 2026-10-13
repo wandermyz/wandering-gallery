@@ -1,6 +1,7 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ownsSidecars, type MediaKind } from './media.js';
 
 export type AssetStatus = 'ready' | 'missing' | 'trashed';
 
@@ -10,7 +11,7 @@ export interface AssetRow {
   rel_path: string;
   folder: string;
   name: string;
-  kind: 'image' | 'video';
+  kind: MediaKind;
   size: number;
   mtime_ms: number;
   inode: number;
@@ -245,13 +246,13 @@ export class Db {
     return this.get<AssetRow>(`${CAPTION_JOIN} WHERE assets.id = ?`, id);
   }
 
-  /** Live assets in `folder` whose name is `<stem>.<ext>` (the owners of that stem's caption sidecars). */
+  /** Live assets in `folder` whose name is `<stem>.<ext>` and that own that stem's caption sidecars. */
   liveWithStem(libraryId: string, folder: string, stem: string): AssetRow[] {
     // '/' sorts right after '.', so [stem + '.', stem + '/') covers names starting with "stem.".
     return this.all<AssetRow>(
       "SELECT * FROM assets WHERE status = 'ready' AND library_id = ? AND folder = ? AND name >= ? AND name < ?",
       libraryId, folder, stem + '.', stem + '/',
-    ).filter((r) => r.name.slice(0, r.name.lastIndexOf('.')) === stem);
+    ).filter((r) => r.name.slice(0, r.name.lastIndexOf('.')) === stem && ownsSidecars(r.name));
   }
 
   caption(id: number): CaptionRow | undefined {

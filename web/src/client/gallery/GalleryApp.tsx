@@ -5,7 +5,7 @@ import { Grid, type Density } from './Grid';
 import { loadTags, TagsView } from './Tags';
 import { Viewer } from './Viewer';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
-import { CAPTION_EVENT, cx, formatBytes, formatDate } from '../common/util';
+import { CAPTION_EVENT, cx, formatBytes, formatDate, LOCK_EVENT } from '../common/util';
 import { SectionSwitcher } from '../shell/nav';
 
 // ---- URL state ------------------------------------------------------------------
@@ -19,7 +19,7 @@ interface Route {
   folder: string;
   favorite: boolean;
   minRating: number;
-  kind: '' | 'image' | 'video';
+  kind: '' | 'image' | 'video' | 'markdown';
   caption: '' | CaptionFilter;
   order: 'desc' | 'asc';
   flat: boolean;
@@ -40,7 +40,7 @@ function readRoute(): Route {
     folder: p.get('folder') ?? '',
     favorite: p.get('fav') === '1',
     minRating: Math.min(5, Math.max(0, Number(p.get('rating')) || 0)),
-    kind: p.get('kind') === 'image' || p.get('kind') === 'video' ? (p.get('kind') as 'image' | 'video') : '',
+    kind: (['image', 'video', 'markdown'] as const).find((k) => k === p.get('kind')) ?? '',
     caption: CAPTION_FILTERS.some(([k]) => k && k === p.get('cap')) ? (p.get('cap') as CaptionFilter) : '',
     order: p.get('order') === 'asc' ? 'asc' : 'desc',
     flat: p.get('flat') === '1',
@@ -273,6 +273,8 @@ export default function GalleryApp() {
       const open = list.items.find((a) => a.id === route.asset);
       if (open && (open.hidden || open.libraryHidden)) closeViewer();
     }
+    // An open document re-resolves its embedded media.
+    window.dispatchEvent(new Event(LOCK_EVENT));
     // A hidden tag's view cannot stay either; the server finds nothing for it while locked.
     void list.reload(true);
     void loadLibraries();
@@ -783,9 +785,9 @@ export default function GalleryApp() {
         <div class="filter-group">
           <div class="filter-label">Show</div>
           <div class="seg">
-            {(['', 'image', 'video'] as const).map((k) => (
+            {(['', 'image', 'video', 'markdown'] as const).map((k) => (
               <button type="button" key={k || 'all'} class={cx(route.kind === k && 'on')} onClick={() => nav({ kind: k }, 'replace')}>
-                {k === '' ? 'All' : k === 'image' ? 'Images' : 'Videos'}
+                {k === '' ? 'All' : k === 'image' ? 'Images' : k === 'video' ? 'Videos' : 'Docs'}
               </button>
             ))}
           </div>
@@ -862,6 +864,7 @@ export default function GalleryApp() {
             onShare={onShare}
             onAssetChange={applyAsset}
             onOpenTag={openTag}
+            onOpenAsset={(id) => nav({ asset: id })}
             writable={(a) => !!libById.get(a.library)?.writable}
             libName={(id) => libById.get(id)?.name ?? id}
           />
@@ -1022,7 +1025,7 @@ function EmptyState({ route, scanning, onClear }: { route: Route; scanning: bool
       ) : scanning ? (
         <p>Scanning library…</p>
       ) : (
-        <p>No images or videos here yet.</p>
+        <p>No images, videos or documents here yet.</p>
       )}
     </div>
   );

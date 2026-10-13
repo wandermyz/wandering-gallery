@@ -22,6 +22,7 @@
     "@fastify/static": "^8.3.0",
     "chokidar": "^5.0.0",
     "fastify": "^5.12.5",
+    "marked": "^18.1.1",
     "pino": "^10.4.0",
     "sharp": "^0.35.5",
     "yaml": "^2.9.1"
@@ -30,6 +31,7 @@
     "@playwright/test": "^1.64.0",
     "@preact/preset-vite": "^2.10.6",
     "@types/node": "^24.19.2",
+    "dompurify": "^3.4.17",
     "preact": "^11.0.1",
     "tsx": "^4.23.15",
     "typescript": "5.9",
