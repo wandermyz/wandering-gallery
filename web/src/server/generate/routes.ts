@@ -101,12 +101,16 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
     if (!Number.isInteger(batch) || batch < 1 || batch > MAX_VIDEO_BATCH) throw new HttpError(`batch must be an integer 1-${MAX_VIDEO_BATCH}`, 400);
     const img = await imageAt(req, text(body.image, 'image', 4096));
     if (!img.row.width || !img.row.height) throw new HttpError('the image has not been indexed yet; try again in a moment', 409);
-    // Named after its content, so picking the same image again reuses the upload.
-    const name = `wg_${img.row.fingerprint.slice(0, 16)}${path.extname(img.row.name).toLowerCase()}`;
+    // ComfyUI loads images from its input and output folders by name ("<rel> [output]"
+    // for the latter), so those are used in place. Others are uploaded to the input
+    // folder, named after their content so picking the same image again reuses the upload.
+    const inPlace = img.row.library_id === g.inputLibrary ? img.row.rel_path
+      : img.row.library_id === g.outputLibrary ? `${img.row.rel_path} [output]` : null;
+    const name = inPlace ?? `wg_${img.row.fingerprint.slice(0, 16)}${path.extname(img.row.name).toLowerCase()}`;
     const source = video.source({ image: name, sourcePath: img.file, width: img.row.width, height: img.row.height, seconds });
     return runs.json(await exclusive(async () => {
       source.check();
-      await comfy.upload(img.file, name);
+      if (!inPlace) await comfy.upload(img.file, name);
       return runs.start(source, prompt, [prompt], batch, { sourcePath: img.file, sourceAsset: img.row.id, seconds });
     }));
   });

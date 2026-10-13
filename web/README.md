@@ -358,8 +358,10 @@ with sound:
    shots well, e.g. `[0s-2s] … [2s-5s] …`, plus an `Audio:` line.
 3. Pick a **length** (5, 8, 10, 12 or 15 s) and how many takes, then *Generate*.
 
-The image is uploaded into ComfyUI's input folder as `wg_<content hash>.<ext>`
-(so picking it again reuses the file) and becomes the first frame. Everything else
+The image becomes the first frame. An image already in ComfyUI's input or output
+folder (the `generate.inputLibrary` / `generate.outputLibrary` libraries, by default
+`comfyui-input` and `comfyui`) is used in place. Any other image is uploaded into
+ComfyUI's input folder as `wg_<content hash>.<ext>` (so picking it again reuses the file). Everything else
 is the official template's default: H3's native canvas (768 px short edge, at
 most 1344×768, matching the image's aspect ratio), 24 fps, and the 8-step turbo
 LoRA. Lengths are snapped up to H3's 17k+5 frame grid. As with images, the app

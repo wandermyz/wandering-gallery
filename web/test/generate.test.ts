@@ -216,7 +216,7 @@ describe('generate API', () => {
   });
 
   async function setup(prompts = true) {
-    env = await makeEnv([{ id: 'comfyui' }], { generate: { promptsDir: '/nonexistent' } });
+    env = await makeEnv([{ id: 'comfyui' }, { id: 'comfyui-input' }, { id: 'photos' }], { generate: { promptsDir: '/nonexistent' } });
     const promptsDir = path.join(env.root, 'prompts');
     if (prompts) writePrompts(promptsDir);
     env.cfg.generate.promptsDir = promptsDir;
@@ -404,14 +404,34 @@ describe('generate API', () => {
     const run = r.json();
     expect(run).toMatchObject({ flow: 'minimax-h3-i2v', prompt: 'the cat waves', video: { sourcePath: img, sourceAsset: asset.id, seconds: 8 } });
     expect(run.jobs).toHaveLength(2);
-    // Uploaded once under a content-derived name, after the GPU went to ComfyUI.
-    expect(comfy.uploads).toEqual([{ file: img, name: expect.stringMatching(/^wg_[0-9a-f]{16}\.png$/) }]);
+    // Already in ComfyUI's output folder: used in place, not uploaded.
+    expect(comfy.uploads).toEqual([]);
     expect(log).toEqual(['to comfy']);
-    expect(comfy.submitted.map((s) => s.graph['16'].inputs.image)).toEqual([comfy.uploads[0].name, comfy.uploads[0].name]);
+    expect(comfy.submitted.map((s) => s.graph['16'].inputs.image)).toEqual(['kf/cat.png [output]', 'kf/cat.png [output]']);
     expect(comfy.submitted[0].graph['6'].inputs).toMatchObject({ prompt: 'the cat waves', width: 1344, height: 768, length: 192 });
     expect(comfy.submitted[0].graph['7'].inputs.noise_seed).not.toBe(comfy.submitted[1].graph['7'].inputs.noise_seed);
 
     comfy.online = false;
     expect((await post(url, { image: img, prompt: 'x', seconds: 5 })).statusCode).toBe(503);
+  });
+
+  it('uploads a video input image only when it is outside ComfyUI\'s folders', async () => {
+    await setup();
+    const input = path.join(env.lib('comfyui-input'), 'refs', 'cat.png');
+    const photo = path.join(env.lib('photos'), 'dog.png');
+    await makePng(input);
+    await makePng(photo);
+    ageAll(env.root);
+    await env.sync();
+
+    const url = '/api/generate/flows/minimax-h3-i2v/runs';
+    expect((await post(url, { image: input, prompt: 'waves', seconds: 5 })).statusCode).toBe(200);
+    expect(comfy.uploads).toEqual([]);
+    expect(comfy.submitted.at(-1)!.graph['16'].inputs.image).toBe('refs/cat.png');
+
+    // Uploaded once under a content-derived name, after the GPU went to ComfyUI.
+    expect((await post(url, { image: photo, prompt: 'barks', seconds: 5 })).statusCode).toBe(200);
+    expect(comfy.uploads).toEqual([{ file: photo, name: expect.stringMatching(/^wg_[0-9a-f]{16}\.png$/) }]);
+    expect(comfy.submitted.at(-1)!.graph['16'].inputs.image).toBe(comfy.uploads[0].name);
   });
 });
