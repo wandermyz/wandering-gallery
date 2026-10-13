@@ -68,6 +68,8 @@ export interface GenerateConfig {
   gpuWorkload: string | null;
   /** Library that holds ComfyUI's output folder (to show results), or null. */
   outputLibrary: string | null;
+  /** Library that holds ComfyUI's input folder (its images are used in place), or null. */
+  inputLibrary: string | null;
   /** Workflow templates (API + UI JSON); defaults to the repo's comfyui/workflows. */
   workflowsDir: string;
   /** Local prompt files (never in git), one `<flow>.yaml` per flow. */
@@ -198,6 +200,13 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
   } else if (seen.has('comfyui')) {
     outputLibrary = 'comfyui';
   }
+  let inputLibrary: string | null = null;
+  if (generate.inputLibrary !== undefined && generate.inputLibrary !== null) {
+    inputLibrary = str(generate.inputLibrary, 'generate.inputLibrary');
+    if (!seen.has(inputLibrary)) throw new ConfigError(`generate.inputLibrary "${inputLibrary}" is not a library id`);
+  } else if (seen.has('comfyui-input')) {
+    inputLibrary = 'comfyui-input';
+  }
 
   if (generate.loras !== undefined && generate.loras !== null && !Array.isArray(generate.loras)) {
     throw new ConfigError('generate.loras must be a list');
@@ -258,6 +267,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       tagger: str(generate.tagger, 'generate.tagger', 'danbooru-tagger'),
       gpuWorkload: generate.gpuWorkload === false ? null : str(generate.gpuWorkload, 'generate.gpuWorkload', 'gpu-workload'),
       outputLibrary,
+      inputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
       promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),
       loras,
