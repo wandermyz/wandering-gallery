@@ -58,13 +58,6 @@ http.createServer(async (req, res) => {
     if (queue.length === 1 && ![...jobs.values()].some((j) => j.status === 'running')) void work();
     return send(200, { prompt_id: id });
   }
-  if (url.pathname === '/fake/tags') {
-    // The tagging graph: echo the description so tests can tell variations apart.
-    const g = await body(req);
-    const vary = g['11']?.inputs?.sampling_mode === 'on';
-    await new Promise((r) => setTimeout(r, 300));
-    return send(200, { text: `1girl, ${vary ? 'varied' : 'base'} tags for ${String(g['8'].inputs.value).split('\n')[0]}` });
-  }
   const m = url.pathname.match(/^\/fake\/jobs\/(.+)$/);
   if (m) {
     const job = jobs.get(m[1]);

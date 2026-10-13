@@ -62,6 +62,10 @@ export interface GenerateConfig {
   comfyui: string;
   /** comfy-cli executable. */
   comfyCli: string;
+  /** danbooru-tagger executable (description → tags). */
+  tagger: string;
+  /** gpu-workload executable, run before queueing ComfyUI jobs; null when there is none. */
+  gpuWorkload: string | null;
   /** Library that holds ComfyUI's output folder (to show results), or null. */
   outputLibrary: string | null;
   /** Workflow templates (API + UI JSON); defaults to the repo's comfyui/workflows. */
@@ -251,6 +255,8 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     generate: {
       comfyui,
       comfyCli: str(generate.comfyCli, 'generate.comfyCli', 'comfy-cli'),
+      tagger: str(generate.tagger, 'generate.tagger', 'danbooru-tagger'),
+      gpuWorkload: generate.gpuWorkload === false ? null : str(generate.gpuWorkload, 'generate.gpuWorkload', 'gpu-workload'),
       outputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),
       promptsDir: resolvePath(str(generate.promptsDir, 'generate.promptsDir', path.join(xdgConfig, 'wandering-gallery', 'prompts'))),

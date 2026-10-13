@@ -28,12 +28,14 @@ function useKept<T>(key: string, init: T): [T, (v: T | ((cur: T) => T)) => void]
   return [value, set];
 }
 
+const norm = (tags: string) => tags.split(',').map((t) => t.trim()).filter(Boolean).join(', ');
+
 const unindexed = (r: Run) => r.jobs.some((j) => j.status === 'completed' && j.outputs.some((o) => !o.asset));
 
 export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDown: () => void }) {
   const k = (name: string) => `${flow.id}:${name}`;
   const [prompt, setPrompt] = useKept(k('prompt'), '');
-  const [variations, setVariations] = useKept<string[]>(k('variations'), ['']);
+  const [variations, setVariations] = useKept<string[]>(k('variations'), [flow.defaultTags]);
   const [batch, setBatch] = useKept(k('batch'), 3);
   /** Indexes of variations whose tags are being generated. */
   const [generating, setGenerating] = useKept<Set<number>>(k('generating'), new Set());
@@ -70,7 +72,9 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
     return () => clearInterval(t);
   }, [active, runs]);
 
-  const empty = variations.map((v, i) => (!v.trim() && !generating.has(i) ? i : -1)).filter((i) => i >= 0);
+  /** Variations with nothing beyond the prefilled quality and LoRA tags. */
+  const blank = (v: string) => !v.trim() || norm(v) === norm(flow.defaultTags);
+  const empty = variations.map((v, i) => (blank(v) && !generating.has(i) ? i : -1)).filter((i) => i >= 0);
   const canTag = !!prompt.trim() && flow.ready;
   const busyTags = generating.size > 0;
 
@@ -97,7 +101,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
 
   const setCount = (n: number) => {
     n = Math.min(MAX_VARIATIONS, Math.max(1, n));
-    setVariations((vs) => (n > vs.length ? [...vs, ...Array<string>(n - vs.length).fill('')] : vs.slice(0, n)));
+    setVariations((vs) => (n > vs.length ? [...vs, ...Array<string>(n - vs.length).fill(flow.defaultTags)] : vs.slice(0, n)));
   };
 
   const fillTags = async () => {
@@ -110,7 +114,7 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
   };
 
   const removeVariation = (index: number) => {
-    setVariations((vs) => (vs.length > 1 ? vs.filter((_, i) => i !== index) : ['']));
+    setVariations((vs) => (vs.length > 1 ? vs.filter((_, i) => i !== index) : [flow.defaultTags]));
   };
 
   const start = async () => {
@@ -144,7 +148,8 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
 
   const tagLabel = !empty.length ? 'Regenerate all' : empty.length === variations.length ? 'Generate tags' : `Generate ${empty.length} more`;
   const total = variations.length * batch;
-  const canRun = flow.ready && !!prompt.trim() && variations.every((v) => v.trim()) && !busyTags && !starting;
+  // Tags may be typed by hand, so the description is optional.
+  const canRun = flow.ready && variations.every((v) => v.trim()) && !busyTags && !starting;
 
   return (
     <div class="gen">
@@ -166,13 +171,13 @@ export function TagsFlowPage({ flow, onComfyDown }: { flow: FlowInfo; onComfyDow
             <div class="gen-var-head">
               <span class="gen-label">Variation {i + 1}{i === 0 && <span class="muted"> · as described</span>}</span>
               <IconButton icon="refresh" label={`Regenerate variation ${i + 1}`} disabled={!canTag || generating.has(i)} onClick={() => generateTags(i)} />
-              <IconButton icon="close" label={`Remove variation ${i + 1}`} disabled={busyTags || (variations.length === 1 && !v)} onClick={() => removeVariation(i)} />
+              <IconButton icon="close" label={`Remove variation ${i + 1}`} disabled={busyTags || (variations.length === 1 && blank(v))} onClick={() => removeVariation(i)} />
             </div>
             {generating.has(i) ? (
               <Spinner label="Generating tags…" />
             ) : (
               <textarea class="cap-text gen-tags" rows={3} value={v} aria-label={`Tags for variation ${i + 1}`}
-                placeholder={canTag ? 'Generate tags, or type them here' : 'Danbooru tags, comma separated'}
+                placeholder="Danbooru tags, comma separated: generate them or type them here"
                 onInput={(e) => {
                   const text = e.currentTarget.value;
                   setVariations((vs) => vs.map((x, j) => (j === i ? text : x)));
@@ -236,7 +241,7 @@ function RunCard({ run, onCancel, onReuse }: { run: Run; onCancel: () => void; o
         {run.status === 'running' && <button type="button" class="btn btn-sm" onClick={onCancel}>Cancel</button>}
         <button type="button" class="btn btn-sm" onClick={onReuse} title="Put this description and these tags back into the form">Reuse</button>
       </div>
-      <p class="gen-run-prompt break">{run.prompt}</p>
+      {run.prompt && <p class="gen-run-prompt break">{run.prompt}</p>}
       {run.variations.map((tags, v) => (
         <div key={v} class="gen-run-var">
           <p class="gen-run-tags break" title={tags}><span class="muted">V{v + 1}</span> {tags}</p>

@@ -1,8 +1,5 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { HttpError } from '../paths.js';
 
 /** An API-format ComfyUI graph: node id → { class_type, inputs }. */
@@ -30,8 +27,6 @@ export interface Progress {
 export interface ComfyClient {
   /** Throws a 503 HttpError when ComfyUI is not reachable. */
   stats(): Promise<{ devices: { name: string; vramTotal: number; vramFree: number }[] }>;
-  /** Runs a graph to completion and returns its text outputs by node id. */
-  runText(graph: Graph): Promise<Record<string, string[]>>;
   /** Queues a graph; `pnginfo` is embedded in saved images. Returns the prompt id. */
   submit(graph: Graph, pnginfo: Record<string, unknown>): Promise<string>;
   /** Waits for a queued job, reporting progress. `signal` stops waiting (it does not cancel the job). */
@@ -50,8 +45,8 @@ const TERMINAL = new Set(['completed', 'error', 'cancelled']);
 const NOT_RUNNING = new Set(['server_not_running', 'connection_refused']);
 
 /**
- * Drives ComfyUI through comfy-cli (`run`, `jobs status|watch|cancel`, `system-stats`)
- * with JSON output. Only `submit` talks to ComfyUI directly: comfy-cli cannot attach
+ * Drives ComfyUI through comfy-cli (`jobs status|watch|cancel`, `system-stats`)
+ * with JSON output. Only `submit` talks to ComfyUI directly: `comfy-cli run` cannot attach
  * `extra_pnginfo`, which carries the UI workflow and source prompt into the PNG.
  */
 export class CliComfyClient implements ComfyClient {
@@ -133,21 +128,6 @@ export class CliComfyClient implements ComfyClient {
     const d = this.data(await this.cli_(['--json', 'system-stats']));
     const devices = (d.devices as { name: string; vram_total: number; vram_free: number }[] | undefined) ?? [];
     return { devices: devices.map((x) => ({ name: x.name, vramTotal: x.vram_total, vramFree: x.vram_free })) };
-  }
-
-  async runText(graph: Graph) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wg-comfy-'));
-    try {
-      const file = path.join(dir, 'workflow.json');
-      fs.writeFileSync(file, JSON.stringify(graph));
-      // Waits behind anything already queued, so allow for a long queue.
-      const run = this.data(await this.cli_(['run', '--workflow', file, '--wait', '--json', '--no-watch', '--no-notify', '--timeout', '600'], { timeoutMs: 30 * 60_000 }));
-      if (run.status !== 'completed') throw new HttpError(`ComfyUI job ${String(run.status)}`, 502);
-      const st = this.data(await this.cli_(['--json', 'jobs', 'status', String(run.prompt_id)]));
-      return (st.text_outputs as Record<string, string[]> | undefined) ?? {};
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
   }
 
   async submit(graph: Graph, pnginfo: Record<string, unknown>) {

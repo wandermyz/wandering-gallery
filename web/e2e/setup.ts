@@ -41,7 +41,6 @@ async function setup() {
   fs.mkdirSync(path.join(root, 'comfy-out'), { recursive: true });
   fs.mkdirSync(path.join(root, 'prompts'), { recursive: true });
   fs.writeFileSync(path.join(root, 'prompts', 'wai-illustrious-tags.yaml'), `
-systemPrompt: Turn the description into tags.
 variationInstruction: Make a distinct character.
 traits:
   - [red hair, blue hair]
@@ -73,6 +72,8 @@ scan:
 generate:
   comfyui: http://127.0.0.1:2397
   comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
+  tagger: ${path.resolve('e2e/fake-danbooru-tagger.mjs')}
+  gpuWorkload: ${path.resolve('e2e/fake-gpu-workload.mjs')}
   outputLibrary: comfy
   promptsDir: ./prompts
   loras:

@@ -46,6 +46,8 @@ trash:
 # generate:
 #   comfyui: http://127.0.0.1:8188   # ComfyUI server
 #   comfyCli: comfy-cli              # comfy-cli executable
+#   tagger: danbooru-tagger          # description -> Danbooru tags (local LLM)
+#   gpuWorkload: gpu-workload        # run `switch comfy` before ComfyUI jobs; false to skip
 #   outputLibrary: comfyui           # library that holds ComfyUI's output folder
 #   promptsDir: ~/.config/wandering-gallery/prompts   # local prompt texts, never in git
 #   # One "prompt to tags" flow per LoRA (e.g. from `wlora train` in lora/). It shares the
@@ -56,7 +58,7 @@ trash:
 #       title: Siggraph LoRA
 #       lora: siggraph.safetensors        # as ComfyUI lists it under models/loras
 #       strength: 1.0
-#       tags: siggraph, cat               # put in front of the generated tags
+#       tags: siggraph, cat               # prefilled after the quality tags
 #       negative: photo (medium), realistic, text, signature, watermark   # appended
 #       dropTags: [1girl, 1boy, 2girls, 2boys, multiple girls, multiple boys]   # removed from generated tags
 
