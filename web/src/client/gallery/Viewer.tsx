@@ -138,6 +138,9 @@ export function Viewer(props: ViewerProps) {
     setTrack(-dir * w, true);
     const done = () => {
       animating.current = false;
+      // The viewer may have closed mid-slide (e.g. iOS edge-swipe back): navigating now
+      // would rewrite the grid's history entry into a viewer one.
+      if (!trackRef.current?.isConnected) return;
       setTrack(0, false);
       propsRef.current.onNavigate(target.id);
     };
@@ -328,6 +331,15 @@ export function Viewer(props: ViewerProps) {
     const up = (e: PointerEvent) => {
       if (!pts.has(e.pointerId)) return;
       pts.delete(e.pointerId);
+      // The browser took the touch over (iOS edge-swipe back, scrolling…): never commit a
+      // swipe or dismiss from it, or we'd navigate/close on top of the browser's own navigation.
+      if (e.type === 'pointercancel' && (mode === 'swipe' || mode === 'dismiss')) {
+        if (pts.size > 0) return;
+        setTrack(0, true);
+        stage.parentElement!.style.removeProperty('--bg-alpha');
+        mode = 'none';
+        return;
+      }
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (mode === 'pinch') {

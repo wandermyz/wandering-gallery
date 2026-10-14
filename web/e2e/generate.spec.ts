@@ -11,11 +11,20 @@ async function noHorizontalScroll(page: Page) {
   expect(sw).toBeLessThanOrEqual(cw);
 }
 
+/** On touch devices every text field is at least 16px, or iOS Safari zooms in when it is focused. */
+async function noFocusZoom(page: Page, project: string) {
+  if (!project.startsWith('iphone')) return;
+  const sizes = await page.locator('input:not([type=checkbox], [type=radio], [type=range], [type=file]), textarea, select')
+    .evaluateAll((els) => els.map((el) => parseFloat(getComputedStyle(el).fontSize)));
+  expect(sizes.length).toBeGreaterThan(0);
+  for (const s of sizes) expect(s).toBeGreaterThanOrEqual(16);
+}
+
 test.beforeEach(async ({ page }) => {
   await comfyOnline(true);
 });
 
-test('describe, tag variations, edit them and generate a batch', async ({ page }) => {
+test('describe, tag variations, edit them and generate a batch', async ({ page }, info) => {
   await page.goto('/generate');
   await expect(page).toHaveURL(new RegExp(`${FLOW}$`));
   await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · prompt to tags');
@@ -28,6 +37,7 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await page.getByRole('button', { name: 'More tag variations' }).click();
   await page.getByRole('button', { name: 'More tag variations' }).click();
   await expect(page.locator('.gen-var')).toHaveCount(3);
+  await noFocusZoom(page, info.project.name);
   await page.getByRole('button', { name: 'Generate tags' }).click();
 
   const tags = page.locator('.gen-tags');
@@ -154,7 +164,7 @@ test('a LoRA flow has the same form, with its trigger tags in front', async ({ p
   await expect(page.locator('#gen-prompt')).toHaveValue('');
 });
 
-test('copy an image path in the viewer, paste it into the video flow and generate a video', async ({ page }) => {
+test('copy an image path in the viewer, paste it into the video flow and generate a video', async ({ page }, info) => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   await page.goto('/gallery?lib=lib');
   await page.getByRole('button', { name: 'gen_00001_.png' }).click();
@@ -172,6 +182,7 @@ test('copy an image path in the viewer, paste it into the video flow and generat
   await expect(page.locator('#vid-path')).toHaveValue(copied);
   await expect(page.locator('.vid-preview img')).toBeVisible();
   await expect(page.locator('.vid-preview figcaption')).toContainText('gen_00001_.png · 832×1216');
+  await noFocusZoom(page, info.project.name);
 
   // Lengths: 5 s is the default.
   await expect(page.getByRole('radio', { name: '5 s', exact: true })).toHaveAttribute('aria-checked', 'true');
