@@ -47,6 +47,8 @@ export interface AppConfig {
   tools: {
     ffmpeg: string;
     ffprobe: string;
+    /** For the dashboard's GPU readings. */
+    nvidiaSmi: string;
   };
   generate: GenerateConfig;
   hidden: {
@@ -260,6 +262,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
     tools: {
       ffmpeg: str(tools.ffmpeg, 'tools.ffmpeg', 'ffmpeg'),
       ffprobe: str(tools.ffprobe, 'tools.ffprobe', 'ffprobe'),
+      nvidiaSmi: str(tools.nvidiaSmi, 'tools.nvidiaSmi', 'nvidia-smi'),
     },
     generate: {
       comfyui,

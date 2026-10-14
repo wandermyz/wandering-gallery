@@ -52,9 +52,9 @@ test('sections switch from the rail or the drawer and keep the gallery view', as
   await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · prompt to tags');
   await noHorizontalScroll(page);
 
-  await goSection(page, 'Train', mobile);
-  await expect(page).toHaveURL(/\/train$/);
-  await expect(page.locator('.topbar h1')).toHaveText('Train');
+  await goSection(page, 'Dashboard', mobile);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.locator('.topbar h1')).toHaveText('Dashboard');
 
   // Coming back restores the folder and filters the gallery was left on.
   await goSection(page, 'Gallery', mobile);
@@ -63,7 +63,7 @@ test('sections switch from the rail or the drawer and keep the gallery view', as
 
   // The back button walks section changes.
   await page.goBack();
-  await expect(page.locator('.topbar h1')).toHaveText('Train');
+  await expect(page.locator('.topbar h1')).toHaveText('Dashboard');
   await page.goBack();
   await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · prompt to tags');
   await page.goBack();
@@ -85,7 +85,7 @@ test('nothing scrolls sideways on narrow and wide screens', async ({ page }, inf
   const sizes = isMobile(info.project.name) ? [null] : [{ width: 320, height: 640 }, { width: 899, height: 700 }, { width: 900, height: 700 }, { width: 1920, height: 1080 }];
   for (const size of sizes) {
     if (size) await page.setViewportSize(size);
-    for (const url of ['/gallery', '/gallery?lib=lib', '/gallery/trash', '/generate', '/train']) {
+    for (const url of ['/gallery', '/gallery?lib=lib', '/gallery/trash', '/generate', '/dashboard']) {
       await page.goto(url);
       await expect(page.locator('.topbar h1')).toBeVisible();
       await noHorizontalScroll(page);

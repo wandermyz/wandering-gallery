@@ -170,6 +170,15 @@ export class Runs {
     return run;
   }
 
+  /** The run that queued a ComfyUI job, and that job, while the run is tracked. */
+  byPromptId(promptId: string): { run: Run; job: Job } | null {
+    for (const run of this.runs.values()) {
+      const job = run.jobs.find((j) => j.promptId === promptId);
+      if (job) return { run, job };
+    }
+    return null;
+  }
+
   /** Stops watching (server shutdown). Jobs keep running in ComfyUI. */
   close() {
     for (const ac of this.aborts.values()) ac.abort();
@@ -183,7 +192,7 @@ export class Runs {
     };
   }
 
-  private asset(o: OutputFile): { id: number; v: string; library: string; width: number | null; height: number | null } | null {
+  asset(o: OutputFile): { id: number; v: string; library: string; width: number | null; height: number | null } | null {
     if (!this.outputLibrary) return null;
     const row = this.db.liveAt(this.outputLibrary, o.subfolder ? `${o.subfolder}/${o.filename}` : o.filename);
     return row ? { id: row.id, v: row.fingerprint.slice(0, 12), library: row.library_id, width: row.width, height: row.height } : null;

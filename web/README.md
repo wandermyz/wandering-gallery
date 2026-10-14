@@ -170,10 +170,17 @@ experience.
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
 
-The app has sections: *Gallery*, and placeholders for *Generate* (ComfyUI
-workflows) and *Train* (LoRA training). On desktop they're in a rail on the left. On
+The app has sections: *Gallery*, *Generate* (ComfyUI workflows) and *Dashboard*.
+On desktop they're in a rail on the left. On
 phones they're at the top of the ☰ drawer. The gallery lives under `/gallery`. Old
 links (`/`, `/?lib=…`, `/trash`) are redirected there.
+
+*Dashboard* (`/dashboard`) is a read-only status page that refreshes every 3 s while
+it is open: ComfyUI's running, queued and recent jobs (from its `/queue` and `/api/jobs`),
+GPU load, VRAM, temperature and power (`nvidia-smi`, set `tools.nvidiaSmi` if it is not on
+the PATH), and who holds the GPU (`gpu-workload status`). It never queues, cancels or
+switches anything. ComfyUI sends step progress only to the client that queued a job, so a
+progress bar is shown for jobs started from *Generate*. Other jobs show elapsed time.
 
 The ☰ menu switches between *All media*, *Favorites*, each library, and
 *Trash*, and can trigger a rescan. The filter button sets the media type,

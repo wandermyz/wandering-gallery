@@ -75,3 +75,4 @@ thumbnails:
 tools:
   ffmpeg: ffmpeg           # used for video thumbnails
   ffprobe: ffprobe         # used for video metadata
+  nvidiaSmi: nvidia-smi    # GPU readings on the dashboard

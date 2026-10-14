@@ -5,10 +5,11 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
 import { parseConfig } from '../src/server/config.js';
 import { HttpError } from '../src/server/paths.js';
-import type { ComfyClient, Graph, JobResult, Progress } from '../src/server/generate/comfy.js';
+import type { ComfyClient, ComfyQueue, Graph, JobResult, Progress } from '../src/server/generate/comfy.js';
 import { parseOutputUrl } from '../src/server/generate/comfy.js';
 import { TagsFlow } from '../src/server/generate/flow.js';
 import { VideoFlow, videoCanvas, videoFrames } from '../src/server/generate/video.js';
+import { parseNvidiaSmi, type GpuMonitor } from '../src/server/generate/monitor.js';
 import type { Gpu, Tagger } from '../src/server/generate/tools.js';
 import { makeEnv, makePng, ageAll, tmpDir, type Env } from './helpers.js';
 
@@ -65,6 +66,14 @@ class FakeComfy implements ComfyClient {
     this.check();
     this.uploads.push({ file, name });
   }
+  /** What `queue()` answers; the dashboard tests set it. */
+  queued: ComfyQueue = { running: [], pending: [], recent: [] };
+  queueCalls = 0;
+  async queue() {
+    this.check();
+    this.queueCalls++;
+    return this.queued;
+  }
   progress(id: string, value: number, max: number) {
     this.waiters.get(id)?.onProgress({ node: '5', value, max });
   }
@@ -96,6 +105,26 @@ class FakeGpu implements Gpu {
   async toComfy() {
     this.log.push('to comfy');
     if (this.fail) throw new HttpError('Could not hand the GPU to ComfyUI. Strata is busy', 503);
+  }
+}
+
+/** Fixed GPU readings; records nothing it could change. */
+class FakeMonitor implements GpuMonitor {
+  async card() {
+    const s = { atMs: 1, name: 'Fake GPU', util: 97, memUsedMib: 15000, memTotalMib: 16000, tempC: 70, powerW: 250, powerLimitW: 300 };
+    return { now: s, history: [s], error: null };
+  }
+  async workload() {
+    return {
+      status: {
+        mode: 'comfy',
+        strata: { service: true, reachable: true, loaded: false },
+        comfy: { service: true, reachable: true, running: 1, pending: 0, holds_models: true },
+        gpu: { total_mib: 16000, free_mib: 1000, strata_mib: 0, comfy_mib: 15000, other_mib: 0 },
+        last_event: null,
+      },
+      error: null,
+    };
   }
 }
 
@@ -196,6 +225,14 @@ describe('generate flow graphs', () => {
     expect(nodes.find((n) => n.id === 114)!.widgets_values[0]).toBe('wg_abc.png');
   });
 
+  it('parses nvidia-smi readings', () => {
+    expect(parseNvidiaSmi('NVIDIA GeForce RTX 5070 Ti, 100, 15352, 16303, 78, 258.98, 300.00', 5)).toEqual({
+      atMs: 5, name: 'NVIDIA GeForce RTX 5070 Ti', util: 100, memUsedMib: 15352, memTotalMib: 16303, tempC: 78, powerW: 258.98, powerLimitW: 300,
+    });
+    expect(parseNvidiaSmi('GPU, 3, 100, 200, [N/A], [N/A], [N/A]', 0)).toMatchObject({ util: 3, tempC: null, powerW: null });
+    expect(parseNvidiaSmi('', 0)).toBeNull();
+  });
+
   it('parses comfy-cli output URLs', () => {
     expect(parseOutputUrl('http://127.0.0.1:8188/view?filename=a%20b.png&subfolder=x%2Fy&type=output'))
       .toEqual({ filename: 'a b.png', subfolder: 'x/y', type: 'output' });
@@ -227,7 +264,7 @@ describe('generate API', () => {
     app = await build();
   }
 
-  const build = () => buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, generate: { comfy, tagger, gpu } });
+  const build = () => buildApp({ cfg: env.cfg, db: env.db, indexer: env.indexer, trash: env.trash, webRoot: null, generate: { comfy, tagger, gpu, monitor: new FakeMonitor() } });
 
   async function post(url: string, body: unknown = {}) {
     const csrf = (await app.inject({ url: '/api/session' })).json().csrf;
@@ -433,5 +470,44 @@ describe('generate API', () => {
     expect((await post(url, { image: photo, prompt: 'barks', seconds: 5 })).statusCode).toBe(200);
     expect(comfy.uploads).toEqual([{ file: photo, name: expect.stringMatching(/^wg_[0-9a-f]{16}\.png$/) }]);
     expect(comfy.submitted.at(-1)!.graph['16'].inputs.image).toBe(comfy.uploads[0].name);
+  });
+
+  it('shows the dashboard: queue, own-job progress, visible previews, GPU', async () => {
+    await setup();
+    await makePng(path.join(env.lib('comfyui'), 'done_00001_.png'));
+    await makePng(path.join(env.lib('comfyui'), 'secret_00001_.png'));
+    ageAll(env.root);
+    await env.sync();
+    env.db.setHidden(env.db.liveAt('comfyui', 'secret_00001_.png')!.id, true);
+
+    const run = (await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a', variations: ['t'], batch: 1 })).json();
+    await tick();
+    comfy.progress('p1', 14, 28);
+    const job = { createdAtMs: 1, startedAtMs: null, endedAtMs: null, error: null, clientId: null, title: null, model: null, output: null };
+    comfy.queued = {
+      running: [{ ...job, id: 'p1', status: 'running', title: 'WAI' }],
+      pending: [{ ...job, id: 'other', status: 'pending', clientId: 'comfy-render-1234abcd' }],
+      recent: [
+        { ...job, id: 'h1', status: 'completed', endedAtMs: 5, output: { filename: 'done_00001_.png', subfolder: '', type: 'output' } },
+        { ...job, id: 'h2', status: 'completed', endedAtMs: 4, output: { filename: 'secret_00001_.png', subfolder: '', type: 'output' } },
+        { ...job, id: 'h3', status: 'failed', endedAtMs: 3, error: 'KSampler: out of memory' },
+      ],
+    };
+    const d = (await app.inject({ url: '/api/dashboard' })).json();
+    expect(d.comfy).toMatchObject({ online: true, error: null });
+    expect(d.comfy.running[0]).toMatchObject({ id: 'p1', flow: run.flow, progress: 0.5 });
+    expect(d.comfy.pending[0]).toMatchObject({ id: 'other', flow: null, progress: null });
+    expect(d.comfy.recent.map((j: { output: { asset: unknown } | null }) => j.output?.asset ?? null))
+      .toEqual([expect.objectContaining({ id: expect.any(Number) }), null, null]);
+    expect(d.gpu.now).toMatchObject({ util: 97 });
+    expect(d.workload.status.mode).toBe('comfy');
+    // Watching never touches the GPU hand-over or the queue.
+    expect(log).toEqual(['to comfy']);
+    expect(comfy.submitted).toHaveLength(1);
+
+    comfy.online = false;
+    const down = (await app.inject({ url: '/api/dashboard' })).json();
+    expect(down.comfy).toMatchObject({ online: false, error: expect.stringMatching(/not running/), running: [] });
+    expect(down.gpu.now).toMatchObject({ util: 97 });
   });
 });
