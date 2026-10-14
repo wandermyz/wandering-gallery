@@ -3,8 +3,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../config.js';
 import type { AssetRow, Db } from '../db.js';
 import { HttpError } from '../paths.js';
-import { CliComfyClient, type ComfyClient } from './comfy.js';
+import { CliComfyClient, type ComfyClient, type OutputFile, type QueueJob } from './comfy.js';
 import { MAX_PROMPT, MAX_TAGS, TagsFlow } from './flow.js';
+import { CliGpuMonitor, type GpuMonitor } from './monitor.js';
 import { MAX_BATCH, MAX_VARIATIONS, MAX_VIDEO_BATCH, Runs } from './runs.js';
 import { CliGpu, CliTagger, type Gpu, type Tagger } from './tools.js';
 import { MAX_VIDEO_PROMPT, VIDEO_SECONDS, VideoFlow } from './video.js';
@@ -20,13 +21,17 @@ export interface GenerateDeps {
   comfy?: ComfyClient;
   tagger?: Tagger;
   gpu?: Gpu;
+  monitor?: GpuMonitor;
 }
+
+/** Finished jobs listed on the dashboard. */
+const DASHBOARD_RECENT = 20;
 
 /** A gallery image by absolute path, confined to the libraries (see app.ts). */
 export type ImageAt = (req: FastifyRequest, file: string) => Promise<{ row: AssetRow; asset: unknown; file: string }>;
 
 /** `/api/generate/*`: the generation flows. */
-export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, imageAt: ImageAt, deps: GenerateDeps = {}) {
+export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, imageAt: ImageAt, isHidden: (id: number) => boolean, deps: GenerateDeps = {}) {
   const g = cfg.generate;
   const comfy = deps.comfy ?? new CliComfyClient(g.comfyui, g.comfyCli);
   const tagger = deps.tagger ?? new CliTagger(g.tagger);
@@ -42,7 +47,11 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
     gpuTurn = p.catch(() => {});
     return p;
   };
-  app.addHook('onClose', async () => runs.close());
+  const monitor = deps.monitor ?? new CliGpuMonitor(cfg.tools.nvidiaSmi, g.gpuWorkload);
+  app.addHook('onClose', async () => {
+    runs.close();
+    monitor.close?.();
+  });
 
   const getFlow = (id: string) => {
     const f = flows.get(id);
@@ -113,6 +122,45 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
       if (!inPlace) await comfy.upload(img.file, name);
       return runs.start(source, prompt, [prompt], batch, { sourcePath: img.file, sourceAsset: img.row.id, seconds });
     }));
+  });
+
+  // The dashboard only reads: ComfyUI's queue and history, nvidia-smi, `gpu-workload status`.
+  app.get('/api/dashboard', async (_req, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const [queue, card, workload] = await Promise.all([
+      comfy.queue(DASHBOARD_RECENT).then((q) => ({ ...q, error: null }), (e: Error) => ({ running: [], pending: [], recent: [], error: e.message })),
+      monitor.card(),
+      monitor.workload(),
+    ]);
+    // Jobs this app queued carry their flow and live sampler progress; ComfyUI only
+    // sends progress to the client that queued a job.
+    // Previews stay out of the way of hidden items, even when unlocked: it is an overview.
+    const visibleAsset = (o: OutputFile) => {
+      const a = runs.asset(o);
+      return a && !isHidden(a.id) ? a : null;
+    };
+    const job = (j: QueueJob) => {
+      const own = runs.byPromptId(j.id);
+      return {
+        ...j,
+        flow: own?.run.flow ?? null,
+        progress: own && j.status === 'running' && own.job.status === 'running' ? own.job.progress : null,
+        output: j.output ? { ...j.output, asset: j.output.type === 'output' ? visibleAsset(j.output) : null } : null,
+      };
+    };
+    return {
+      atMs: Date.now(),
+      comfy: {
+        url: g.comfyui,
+        online: queue.error === null,
+        error: queue.error,
+        running: queue.running.map(job),
+        pending: queue.pending.map(job),
+        recent: queue.recent.map(job),
+      },
+      gpu: card,
+      workload,
+    };
   });
 
   app.get('/api/generate/runs', async (_req, reply) => {

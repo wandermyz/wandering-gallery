@@ -672,7 +672,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return { row, asset: toJson(req, row), file: await assetFile(row) };
   };
 
-  registerGenerate(app, cfg, db, imageAt, deps.generate);
+  registerGenerate(app, cfg, db, imageAt, (id) => {
+    const row = db.asset(id);
+    return !row || isHidden(row);
+  }, deps.generate);
 
   // ---- Live updates (Server-Sent Events) ------------------------------------------
 

@@ -96,6 +96,7 @@ hidden:
 tools:
   ffmpeg: ${FFMPEG}
   ffprobe: ${FFPROBE}
+  nvidiaSmi: ${path.resolve('e2e/fake-nvidia-smi.mjs')}
 libraries:
   - id: lib
     name: Test Library

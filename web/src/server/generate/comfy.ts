@@ -26,6 +26,32 @@ export interface Progress {
   max: number;
 }
 
+/** A job in ComfyUI's queue or history, as the dashboard shows it. */
+export interface QueueJob {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  createdAtMs: number | null;
+  /** Running jobs: estimated as when the job before it ended (ComfyUI does not say). */
+  startedAtMs: number | null;
+  endedAtMs: number | null;
+  error: string | null;
+  /** The websocket client that queued it (queued and running jobs only). */
+  clientId: string | null;
+  /** The save node's filename prefix (queued and running jobs only). */
+  title: string | null;
+  /** The checkpoint or diffusion model (queued and running jobs only). */
+  model: string | null;
+  output: OutputFile | null;
+}
+
+export interface ComfyQueue {
+  running: QueueJob[];
+  /** In the order ComfyUI will run them. */
+  pending: QueueJob[];
+  /** Finished jobs, newest first. */
+  recent: QueueJob[];
+}
+
 /** What the generate flows need from ComfyUI. Tests substitute a fake. */
 export interface ComfyClient {
   /** Throws a 503 HttpError when ComfyUI is not reachable. */
@@ -37,6 +63,8 @@ export interface ComfyClient {
   cancel(promptId: string): Promise<void>;
   /** Copies a local file into ComfyUI's input folder as `name` (replacing one of that name). */
   upload(file: string, name: string): Promise<void>;
+  /** The queue and the last `recent` finished jobs. Read-only. */
+  queue(recent: number): Promise<ComfyQueue>;
 }
 
 interface Envelope {
@@ -192,6 +220,32 @@ export class CliComfyClient implements ComfyClient {
     this.data(await this.cli_(['--json', 'jobs', 'cancel', promptId]));
   }
 
+  async queue(recent: number): Promise<ComfyQueue> {
+    const get = async (p: string) => {
+      try {
+        return await fetch(`${this.url}${p}`, { signal: AbortSignal.timeout(10_000) });
+      } catch {
+        throw this.notRunning();
+      }
+    };
+    // /queue carries the graphs (for a title); /api/jobs the normalized history.
+    const [q, h] = await Promise.all([get('/queue'), get(`/api/jobs?status=completed,failed,cancelled&limit=${recent}`)]);
+    // A proxy in front of a stopped ComfyUI answers 502/503.
+    if (q.status === 502 || q.status === 503) throw this.notRunning();
+    if (!q.ok) throw new HttpError(`ComfyUI: /queue answered HTTP ${q.status}`, 502);
+    const queue = (await q.json()) as { queue_running?: unknown[]; queue_pending?: unknown[] };
+    // Older ComfyUI has no /api/jobs: no history then.
+    const history = h.ok ? ((await h.json()) as { jobs?: ApiJob[] }).jobs ?? [] : [];
+    const recentJobs = history.map(historyJob);
+    const lastEnd = Math.max(0, ...recentJobs.map((j) => j.endedAtMs ?? 0)) || null;
+    const running = (queue.queue_running ?? []).map((it) => queuedJob(it, 'running'));
+    for (const j of running) j.startedAtMs = lastEnd && j.createdAtMs ? Math.max(lastEnd, j.createdAtMs) : lastEnd ?? j.createdAtMs;
+    // ComfyUI runs the lowest number first; /queue does not sort its pending list.
+    const pending = (queue.queue_pending ?? []).map((it) => queuedJob(it, 'pending')).sort((a, b) => a.priority - b.priority);
+    const strip = ({ priority: _, ...j }: QueueJob & { priority: number }): QueueJob => j;
+    return { running: running.map(strip), pending: pending.map(strip), recent: recentJobs };
+  }
+
   async upload(file: string, name: string) {
     // comfy-cli uploads under the file's own name: link it into a scratch folder as `name`.
     const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wandering-gallery-'));
@@ -215,6 +269,54 @@ function jobSnapshot(env: Envelope | null): (Record<string, unknown> & { message
   const details = (env.error as { details?: Record<string, unknown> } | null)?.details;
   if (details && typeof details.status === 'string') return { ...details, message: env.error?.message };
   return null;
+}
+
+interface ApiJob {
+  id: string;
+  status: string;
+  create_time?: number;
+  execution_start_time?: number;
+  execution_end_time?: number;
+  execution_error?: { node_type?: string; exception_message?: string };
+  preview_output?: { filename?: string; subfolder?: string; type?: string };
+}
+
+function historyJob(j: ApiJob): QueueJob {
+  const e = j.execution_error;
+  const p = j.preview_output;
+  return {
+    id: j.id,
+    status: j.status === 'failed' || j.status === 'cancelled' ? j.status : 'completed',
+    createdAtMs: j.create_time ?? null,
+    startedAtMs: j.execution_start_time ?? null,
+    endedAtMs: j.execution_end_time ?? null,
+    error: e ? [e.node_type, e.exception_message?.trim().split('\n')[0]].filter(Boolean).join(': ').slice(0, 300) || 'failed' : null,
+    clientId: null,
+    title: null,
+    model: null,
+    output: p?.filename ? { filename: p.filename, subfolder: p.subfolder ?? '', type: p.type ?? 'output' } : null,
+  };
+}
+
+/** A /queue item: [number, prompt id, graph, extra_data, outputs to execute]. */
+function queuedJob(item: unknown, status: 'running' | 'pending'): QueueJob & { priority: number } {
+  const [priority, id, graph, extra] = item as [number, string, Graph | undefined, { client_id?: string; create_time?: number } | undefined];
+  const nodes = Object.values(graph ?? {});
+  const save = nodes.find((n) => typeof n.inputs?.filename_prefix === 'string');
+  const model = nodes.map((n) => n.inputs?.ckpt_name ?? n.inputs?.unet_name).find((v): v is string => typeof v === 'string');
+  return {
+    priority: Number(priority) || 0,
+    id: String(id),
+    status,
+    createdAtMs: extra?.create_time ?? null,
+    startedAtMs: null,
+    endedAtMs: null,
+    error: null,
+    clientId: extra?.client_id ?? null,
+    title: save ? String(save.inputs.filename_prefix).split('/').pop() || null : null,
+    model: model ? model.replace(/\.(safetensors|ckpt|gguf|pt|pth|bin)$/i, '') : null,
+    output: null,
+  };
 }
 
 /** `http://host/view?filename=a.png&subfolder=x&type=output` → its parts. */

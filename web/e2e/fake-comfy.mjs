@@ -21,6 +21,7 @@ async function work() {
     const job = queue.shift();
     if (!job) return;
     job.status = 'running';
+    job.startedAt = Date.now();
     for (let s = 1; s <= 4 && job.status === 'running'; s++) {
       await new Promise((r) => setTimeout(r, 250));
       job.progress = s / 4;
@@ -38,6 +39,7 @@ async function work() {
     }
     job.outputs = [`http://127.0.0.1:${port}/view?filename=${name}&subfolder=${sub}&type=output`];
     job.status = 'completed';
+    job.endedAt = Date.now();
   }
 }
 
@@ -61,7 +63,7 @@ http.createServer(async (req, res) => {
   if (url.pathname === '/prompt' && req.method === 'POST') {
     const b = await body(req);
     const id = `fake-${++n}`;
-    const job = { id, status: 'queued', progress: 0, outputs: [], graph: b.prompt, pnginfo: b.extra_data?.extra_pnginfo };
+    const job = { id, number: n, createdAt: Date.now(), status: 'queued', progress: 0, outputs: [], graph: b.prompt, pnginfo: b.extra_data?.extra_pnginfo };
     jobs.set(id, job);
     queue.push(job);
     if (queue.length === 1 && ![...jobs.values()].some((j) => j.status === 'running')) void work();
@@ -86,6 +88,24 @@ http.createServer(async (req, res) => {
       return send(200, {});
     }
     return send(200, { status: job.status, progress: job.progress, outputs: job.outputs, graph: job.graph });
+  }
+  // What the dashboard reads: /queue (running and pending, with graphs) and /api/jobs (history).
+  if (url.pathname === '/queue') {
+    const item = (j) => [j.number, j.id, j.graph, { client_id: 'wandering-gallery-fake', create_time: j.createdAt }, []];
+    const all = [...jobs.values()];
+    return send(200, { queue_running: all.filter((j) => j.status === 'running').map(item), queue_pending: all.filter((j) => j.status === 'queued').map(item) });
+  }
+  if (url.pathname === '/api/jobs') {
+    const done = [...jobs.values()].filter((j) => ['completed', 'error', 'cancelled'].includes(j.status)).reverse();
+    return send(200, {
+      jobs: done.map((j) => {
+        const o = j.outputs[0] && new URL(j.outputs[0]).searchParams;
+        return {
+          id: j.id, status: j.status === 'error' ? 'failed' : j.status, create_time: j.createdAt, execution_start_time: j.startedAt, execution_end_time: j.endedAt,
+          ...(o ? { preview_output: { filename: o.get('filename'), subfolder: o.get('subfolder'), type: 'output' } } : {}),
+        };
+      }),
+    });
   }
   if (url.pathname === '/system_stats') return send(200, { devices: [{ name: 'Fake GPU : test', vram_total: 1, vram_free: 1 }] });
   send(404, { error: 'not found' });

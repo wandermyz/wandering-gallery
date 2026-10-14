@@ -10,7 +10,7 @@ import type { SectionId } from './sections';
 // loaded on first use so they never weigh on it.
 const LAZY: Record<Exclude<SectionId, 'gallery'>, () => Promise<{ default: ComponentType }>> = {
   generate: () => import('../generate/GenerateApp'),
-  train: () => import('../train/TrainApp'),
+  dashboard: () => import('../dashboard/DashboardApp'),
 };
 
 function LazySection({ id }: { id: keyof typeof LAZY }) {
