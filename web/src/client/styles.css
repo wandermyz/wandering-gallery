@@ -325,6 +325,9 @@ video.media { width: 100%; height: 100%; background: #000; }
   position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center;
   transition: opacity .2s ease, transform .2s ease;
 }
+/* The bars' gradient tails overlap the video's native controls: only their contents take taps. */
+.viewer-top, .viewer-bottom { pointer-events: none; }
+.viewer-top > *, .viewer-bottom > * { pointer-events: auto; }
 .viewer-top {
   top: 0; gap: 4px;
   padding: calc(4px + var(--safe-t)) calc(10px + var(--safe-r)) 24px calc(4px + var(--safe-l));
@@ -346,6 +349,7 @@ video.media { width: 100%; height: 100%; background: #000; }
 .viewer.chrome-hidden .viewer-top { opacity: 0; transform: translateY(-12px); pointer-events: none; }
 .viewer.chrome-hidden .viewer-bottom { opacity: 0; transform: translateY(12px); pointer-events: none; }
 .viewer.chrome-hidden .nav-arrow { opacity: 0; pointer-events: none; }
+.viewer.chrome-hidden .viewer-top > *, .viewer.chrome-hidden .viewer-bottom > * { pointer-events: none; }
 .viewer.zoomed .nav-arrow { opacity: 0; pointer-events: none; }
 
 .nav-arrow {

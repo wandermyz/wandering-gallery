@@ -242,11 +242,16 @@ export function Viewer(props: ViewerProps) {
       const s = stageSize();
       return { x: x - s.left - s.w / 2, y: y - s.top - s.h / 2 };
     };
+    // Native controls sit along the top (iOS: fullscreen, mute) and bottom (scrubber) edges of
+    // the video's content box, inside the padding that keeps them clear of our bars.
     const isVideoControls = (e: PointerEvent) => {
       const v = (e.target as HTMLElement).closest('video');
       if (!v) return false;
       const r = v.getBoundingClientRect();
-      return e.clientY > r.bottom - 72;
+      const cs = getComputedStyle(v);
+      const top = r.top + parseFloat(cs.paddingTop);
+      const bottom = r.bottom - parseFloat(cs.paddingBottom);
+      return e.clientY < top + 56 || e.clientY > bottom - 72;
     };
     const interactive = (e: PointerEvent) => !!(e.target as HTMLElement).closest('button, a, input, .no-gesture');
 
