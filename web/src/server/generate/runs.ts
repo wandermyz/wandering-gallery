@@ -170,6 +170,16 @@ export class Runs {
     return run;
   }
 
+  /**
+   * Cancels one ComfyUI job by prompt id, queued by this app or not. A tracked job is
+   * marked at once; its run goes on with the rest.
+   */
+  async cancelJob(promptId: string) {
+    await this.comfy.cancel(promptId);
+    const own = this.byPromptId(promptId);
+    if (own && own.run.status === 'running' && ['pending', 'queued', 'running'].includes(own.job.status)) own.job.status = 'cancelled';
+  }
+
   /** The run that queued a ComfyUI job, and that job, while the run is tracked. */
   byPromptId(promptId: string): { run: Run; job: Job } | null {
     for (const run of this.runs.values()) {

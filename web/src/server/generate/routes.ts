@@ -124,7 +124,7 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
     }));
   });
 
-  // The dashboard only reads: ComfyUI's queue and history, nvidia-smi, `gpu-workload status`.
+  // The dashboard reads ComfyUI's queue and history, nvidia-smi, `gpu-workload status`.
   app.get('/api/dashboard', async (_req, reply) => {
     reply.header('Cache-Control', 'no-store');
     const [queue, card, workload] = await Promise.all([
@@ -161,6 +161,15 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
       gpu: card,
       workload,
     };
+  });
+
+  // Any running or queued job, also ones queued from ComfyUI itself or other clients.
+  app.post('/api/dashboard/jobs/:id/cancel', async (req) => {
+    const id = (req.params as { id: string }).id;
+    // Passed to comfy-cli as an argument: never let it look like an option.
+    if (!/^[0-9a-z][\w-]{0,99}$/i.test(id)) throw new HttpError('bad job id', 400);
+    await runs.cancelJob(id);
+    return { ok: true };
   });
 
   app.get('/api/generate/runs', async (_req, reply) => {

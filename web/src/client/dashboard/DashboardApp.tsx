@@ -1,5 +1,6 @@
+import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { Icon, Spinner } from '../common/ui';
+import { ConfirmDialog, Icon, Spinner, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
 import { cx, formatDuration } from '../common/util';
 import { thumbUrl } from '../gallery/api';
 import { goTo } from '../shell/router';
@@ -9,11 +10,17 @@ import { dashApi, type Dashboard, type DashJob, type GpuSample, type Workload } 
 /** How often the page refreshes while it is on screen. */
 const POLL_MS = 3_000;
 
-/** /dashboard: ComfyUI's queue and the GPU, read-only. Polls while the page is visible. */
+let toastSeq = 0;
+
+/** /dashboard: ComfyUI's queue and the GPU; jobs can be cancelled. Polls while the page is visible. */
 export default function DashboardApp() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [confirm, setConfirm] = useState<{ opts: ConfirmOptions; resolve: (ok: boolean) => void } | null>(null);
+  const [toasts, setToasts] = useState<ToastMsg[]>([]);
+  /** Jobs with a cancel request in flight. */
+  const [cancelling, setCancelling] = useState<ReadonlySet<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +55,43 @@ export default function DashboardApp() {
     };
   }, [load]);
 
+  const toast = useCallback((text: string, opts: Partial<ToastMsg> = {}) => {
+    const id = ++toastSeq;
+    setToasts((t) => [...t.slice(-2), { id, text, ...opts }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
+  }, []);
+  const ask = (opts: ConfirmOptions) => new Promise<boolean>((resolve) => setConfirm({ opts, resolve }));
+
+  const cancel = async (job: DashJob) => {
+    const running = job.status === 'running';
+    const ok = await ask({
+      title: running ? 'Stop this job?' : 'Remove this job from the queue?',
+      message: (
+        <p class="muted">
+          <b>{jobName(job)}</b>{job.flow ? ' was queued from Generate.' : ' was not queued from this app.'}
+          {running ? ' Whatever it has made so far is discarded.' : ''}
+        </p>
+      ),
+      confirm: running ? 'Stop job' : 'Remove job',
+      danger: true,
+    });
+    if (!ok) return;
+    setCancelling((s) => new Set(s).add(job.id));
+    try {
+      await dashApi.cancel(job.id);
+      toast(running ? 'Job stopped' : 'Job removed from the queue');
+      await load();
+    } catch (e) {
+      toast(`Cancel failed: ${(e as Error).message}`, { kind: 'error' });
+    } finally {
+      setCancelling((s) => {
+        const n = new Set(s);
+        n.delete(job.id);
+        return n;
+      });
+    }
+  };
+
   const c = data?.comfy;
   const sub = !data ? undefined
     : !c!.online ? 'ComfyUI offline'
@@ -56,7 +100,7 @@ export default function DashboardApp() {
 
   return (
     <SectionPage title="Dashboard" sub={sub} drawerTitle="Dashboard"
-      nav={<p class="muted small drawer-note">Read-only: ComfyUI's queue, the GPU and who holds it. Refreshes every few seconds.</p>}>
+      nav={<p class="muted small drawer-note">ComfyUI's queue, the GPU and who holds it. Refreshes every few seconds.</p>}>
       {error && (
         <div class="banner banner-error" role="alert">
           <Icon name="alert" size={20} /><span>{error}</span>
@@ -70,16 +114,18 @@ export default function DashboardApp() {
             <GpuCard gpu={data.gpu} />
             {data.workload && <WorkloadCard workload={data.workload} />}
           </div>
-          <ComfyCard comfy={data.comfy} now={now} />
+          <ComfyCard comfy={data.comfy} now={now} cancelling={cancelling} onCancel={(j) => void cancel(j)} />
         </div>
       )}
+      <ConfirmDialog opts={confirm?.opts ?? null} onResult={(ok) => { confirm?.resolve(ok); setConfirm(null); }} />
+      <Toasts toasts={toasts} dismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </SectionPage>
   );
 }
 
 // ---- ComfyUI -------------------------------------------------------------------
 
-function ComfyCard({ comfy, now }: { comfy: Dashboard['comfy']; now: number }) {
+function ComfyCard({ comfy, now, cancelling, onCancel }: { comfy: Dashboard['comfy']; now: number; cancelling: ReadonlySet<string>; onCancel: (j: DashJob) => void }) {
   return (
     <section class="gen-card dash-card dash-comfy" aria-labelledby="dash-comfy-h">
       <div class="dash-head">
@@ -91,7 +137,7 @@ function ComfyCard({ comfy, now }: { comfy: Dashboard['comfy']; now: number }) {
       {!comfy.online && <p class="dash-err"><Icon name="alert" size={16} /><span class="break">{comfy.error}</span></p>}
       {comfy.online && (
         <>
-          {comfy.running.map((j) => <RunningJob key={j.id} job={j} now={now} />)}
+          {comfy.running.map((j) => <RunningJob key={j.id} job={j} now={now} cancel={<CancelButton job={j} busy={cancelling.has(j.id)} onCancel={onCancel} />} />)}
           {!comfy.running.length && <p class="muted dash-none">Nothing running.</p>}
 
           <h3 class="dash-h3">Queued <span class="muted">{comfy.pending.length}</span></h3>
@@ -103,6 +149,7 @@ function ComfyCard({ comfy, now }: { comfy: Dashboard['comfy']; now: number }) {
                     <span class="dash-job-n">{i + 1}</span>
                     <JobName job={j} />
                     <span class="dash-job-t muted">{j.createdAtMs ? `${ago(now - j.createdAtMs)} ago` : ''}</span>
+                    <CancelButton job={j} busy={cancelling.has(j.id)} onCancel={onCancel} />
                   </li>
                 ))}
               </ol>
@@ -119,8 +166,10 @@ function ComfyCard({ comfy, now }: { comfy: Dashboard['comfy']; now: number }) {
   );
 }
 
+const jobName = (job: DashJob) => job.title ?? job.output?.filename.replace(/_?\d*_?\.\w+$/, '') ?? 'Job';
+
 function JobName({ job }: { job: DashJob }) {
-  const name = job.title ?? job.output?.filename.replace(/_?\d*_?\.\w+$/, '') ?? 'Job';
+  const name = jobName(job);
   const by = job.flow ? 'gallery' : job.clientId ? clientLabel(job.clientId) : null;
   return (
     <span class="dash-job-name">
@@ -136,7 +185,15 @@ function clientLabel(id: string): string {
   return id.replace(/-[0-9a-f-]{6,}$/i, '') || id;
 }
 
-function RunningJob({ job, now }: { job: DashJob; now: number }) {
+function CancelButton({ job, busy, onCancel }: { job: DashJob; busy: boolean; onCancel: (j: DashJob) => void }) {
+  return (
+    <button type="button" class="btn btn-sm dash-cancel" disabled={busy} aria-label={`Cancel ${jobName(job)}`} onClick={() => onCancel(job)}>
+      {busy ? 'Cancelling…' : 'Cancel'}
+    </button>
+  );
+}
+
+function RunningJob({ job, now, cancel }: { job: DashJob; now: number; cancel: ComponentChildren }) {
   const elapsed = job.startedAtMs ? Math.max(0, now - job.startedAtMs) : null;
   return (
     <div class="dash-running">
@@ -144,6 +201,7 @@ function RunningJob({ job, now }: { job: DashJob; now: number }) {
         <span class="spinner spinner-sm" aria-hidden="true" />
         <JobName job={job} />
         <span class="dash-elapsed" title="Running for (estimated)">{elapsed !== null ? formatDuration(elapsed / 1000) : ''}</span>
+        {cancel}
       </div>
       {job.progress !== null
         ? (

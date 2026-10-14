@@ -679,6 +679,7 @@ video.media { width: 100%; height: 100%; background: #000; }
 .dash-running + .dash-running { margin-top: 8px; }
 .dash-running-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .dash-elapsed { margin-left: auto; font-size: 20px; font-weight: 650; }
+.dash-cancel { flex: none; }
 .meter { height: 6px; border-radius: 3px; background: rgba(139, 124, 246, .18); overflow: hidden; }
 .meter > div { height: 100%; border-radius: 3px; background: var(--accent); transition: width .6s ease; }
 .meter-busy > div { width: 30%; animation: meter-busy 1.6s ease-in-out infinite; }
