@@ -644,11 +644,11 @@ video.media { width: 100%; height: 100%; background: #000; }
 
 /* ---- Dashboard ---- */
 .dash { max-width: 860px; margin: 0 auto; padding: 12px calc(12px + var(--safe-r)) 0 calc(12px + var(--safe-l)); display: grid; gap: 12px; }
-.dash-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-/* Wide screens: the queue beside the GPU cards, which stay in view while it scrolls. */
+/* The GPU cards above the queue; side by side on wide screens. */
+.dash-gpu { display: grid; gap: 12px; min-width: 0; }
 @media (min-width: 1100px) {
-  .dash { max-width: 1200px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
-  .dash-side { position: sticky; top: calc(var(--top-h) + var(--safe-t) + 12px); }
+  .dash { max-width: 1200px; }
+  .dash-gpu { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
 }
 /* VRAM split: categorical slots validated against the card surface (dark). */
 .dash-card { --vram-strata: #3987e5; --vram-comfy: #d95926; --vram-other: #199e70; }

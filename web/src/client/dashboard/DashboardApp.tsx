@@ -66,11 +66,11 @@ export default function DashboardApp() {
       {!data && !error && <Spinner />}
       {data && (
         <div class="dash">
-          <ComfyCard comfy={data.comfy} now={now} />
-          <div class="dash-side">
+          <div class="dash-gpu">
             <GpuCard gpu={data.gpu} />
             {data.workload && <WorkloadCard workload={data.workload} />}
           </div>
+          <ComfyCard comfy={data.comfy} now={now} />
         </div>
       )}
     </SectionPage>
