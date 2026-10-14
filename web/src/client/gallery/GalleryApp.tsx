@@ -8,6 +8,8 @@ import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type Co
 import { CAPTION_EVENT, cx, formatBytes, formatDate, LOCK_EVENT } from '../common/util';
 import { SectionSwitcher } from '../shell/nav';
 
+const KIND_LABELS = { '': 'All', image: 'Images', video: 'Videos', audio: 'Audio', markdown: 'Docs' } as const;
+
 // ---- URL state ------------------------------------------------------------------
 // The gallery state lives in the URL so the back button, reloads and bookmarks work.
 
@@ -19,7 +21,7 @@ interface Route {
   folder: string;
   favorite: boolean;
   minRating: number;
-  kind: '' | 'image' | 'video' | 'markdown';
+  kind: '' | 'image' | 'video' | 'audio' | 'markdown';
   caption: '' | CaptionFilter;
   order: 'desc' | 'asc';
   flat: boolean;
@@ -40,7 +42,7 @@ function readRoute(): Route {
     folder: p.get('folder') ?? '',
     favorite: p.get('fav') === '1',
     minRating: Math.min(5, Math.max(0, Number(p.get('rating')) || 0)),
-    kind: (['image', 'video', 'markdown'] as const).find((k) => k === p.get('kind')) ?? '',
+    kind: (['image', 'video', 'audio', 'markdown'] as const).find((k) => k === p.get('kind')) ?? '',
     caption: CAPTION_FILTERS.some(([k]) => k && k === p.get('cap')) ? (p.get('cap') as CaptionFilter) : '',
     order: p.get('order') === 'asc' ? 'asc' : 'desc',
     flat: p.get('flat') === '1',
@@ -785,9 +787,9 @@ export default function GalleryApp() {
         <div class="filter-group">
           <div class="filter-label">Show</div>
           <div class="seg">
-            {(['', 'image', 'video', 'markdown'] as const).map((k) => (
+            {(['', 'image', 'video', 'audio', 'markdown'] as const).map((k) => (
               <button type="button" key={k || 'all'} class={cx(route.kind === k && 'on')} onClick={() => nav({ kind: k }, 'replace')}>
-                {k === '' ? 'All' : k === 'image' ? 'Images' : k === 'video' ? 'Videos' : 'Docs'}
+                {KIND_LABELS[k]}
               </button>
             ))}
           </div>
@@ -1027,7 +1029,7 @@ function EmptyState({ route, scanning, onClear }: { route: Route; scanning: bool
       ) : scanning ? (
         <p>Scanning library…</p>
       ) : (
-        <p>No images, videos or documents here yet.</p>
+        <p>No images, videos, audio or documents here yet.</p>
       )}
     </div>
   );

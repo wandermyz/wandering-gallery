@@ -145,6 +145,17 @@ export function makeVideo(file: string, opts: { seconds?: number; metadata?: Rec
   execFileSync(FFMPEG, args);
 }
 
+/** A sine tone; `cover` muxes in a small picture as attached cover art (MP3/FLAC/M4A). */
+export function makeAudio(file: string, opts: { seconds?: number; metadata?: Record<string, string>; cover?: boolean } = {}) {
+  const { seconds = 1, metadata = {}, cover = false } = opts;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const args = ['-v', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`];
+  if (cover) args.push('-f', 'lavfi', '-i', 'color=c=red:s=64x64:d=1', '-map', '0:a', '-map', '1:v', '-frames:v', '1', '-c:v', 'png', '-disposition:v', 'attached_pic');
+  for (const [k, v] of Object.entries(metadata)) args.push('-metadata', `${k}=${v}`);
+  args.push(file);
+  execFileSync(FFMPEG, args);
+}
+
 /** Sets a file's mtime into the past so the stability window does not defer it. */
 export function age(file: string, seconds = 120) {
   const t = new Date(Date.now() - seconds * 1000);

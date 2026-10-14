@@ -1,6 +1,6 @@
 # wandering-gallery
 
-A lightweight, mobile-first gallery for AI-generated images and videos, built
+A lightweight, mobile-first gallery for AI-generated images, videos and audio, built
 for browsing and organizing [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 output on your own machine.
 
@@ -31,7 +31,7 @@ output on your own machine.
 ```
 
 - **Server**: Fastify + TypeScript, `node:sqlite`, `sharp` for image
-  thumbnails, `ffmpeg`/`ffprobe` for video, `chokidar` for file watching.
+  thumbnails, `ffmpeg`/`ffprobe` for video and audio, `chokidar` for file watching.
 - **Frontend**: Preact + Vite, about 21 KB gzipped, with no UI framework.
 
 The filesystem is the source of truth. Assets are identified by path, and also
@@ -44,7 +44,7 @@ saved under an old name gets a fresh entry and doesn't inherit the old rating.
 - Linux with systemd (user services), Node.js **≥ 22.13** (uses the built-in
   `node:sqlite`).
 - `ffmpeg` and `ffprobe` on the PATH or configured in the config file (only
-  needed for video thumbnails and video metadata).
+  needed for video and audio thumbnails and metadata).
 - For the Generate section: a running ComfyUI and
   [comfy-cli](https://github.com/Comfy-Org/comfy-cli) on the PATH, plus
   `danbooru-tagger` and `gpu-workload` (both optional to configure; see below).
@@ -391,13 +391,14 @@ Check the MiniMax H3 license for where you may use the model and its outputs.
 | --- | --- | --- |
 | Images | PNG, JPEG, WebP, GIF (incl. animated), AVIF | Very large images and AVIF get a 2048px preview in the viewer; the original is one tap away. |
 | Videos | MP4/M4V, WebM, MOV | Played natively, never transcoded. H.264/VP9/AV1 play everywhere; HEVC only where the browser supports it. Unsupported codecs show an explanation and a download button. |
+| Audio | MP3, M4A/AAC, WAV, FLAC, Ogg/Opus | Played natively in the viewer (and inside Markdown documents). The thumbnail is the embedded cover art, or a waveform. Audio files never own caption sidecars, so `ComfyUI_00001_.flac` leaves the `.txt` of `ComfyUI_00001_.png` alone. |
 
 **Generation metadata**
 
 - ComfyUI PNG `tEXt`/`iTXt`/`zTXt` chunks: `prompt` (API graph) and
   `workflow` (editor graph).
 - ComfyUI WebP/AVIF EXIF (`prompt:{…}`, `workflow:{…}` tags).
-- ComfyUI `SaveVideo` and VideoHelperSuite MP4/WebM tags.
+- ComfyUI `SaveVideo` and VideoHelperSuite MP4/WebM tags, and `SaveAudio` FLAC/MP3/Opus tags.
 - A1111/Forge `parameters` text (PNG) and EXIF UserComment (JPEG/WebP).
 
 Interpretation is best-effort and doesn't assume a fixed graph shape. It walks
@@ -478,8 +479,8 @@ ComfyUI does it.
   nodes only. Custom-node parameters are shown in the raw JSON.
 - HEVC/ProRes videos play only in browsers that support them (Safari usually
   does). Nothing is transcoded.
-- Thumbnails come from the first frame (or 1 s in) for videos, and from the
-  first frame for animated images.
+- Thumbnails come from the first frame (or 1 s in) for videos, from the
+  first frame for animated images, and from cover art or a waveform for audio.
 - Single user, no accounts. Access control is your tailnet.
 
 ## License

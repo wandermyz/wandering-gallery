@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FFMPEG, FFPROBE, ageAll, fixture, hasFfmpeg, makeJpeg, makePng, makeVideo } from '../test/helpers.js';
+import { FFMPEG, FFPROBE, ageAll, fixture, hasFfmpeg, makeAudio, makeJpeg, makePng, makeVideo } from '../test/helpers.js';
 import { hashPassphrase } from '../src/server/unlock.js';
 
 /** Builds a throwaway library with a mix of media for the browser tests. */
@@ -35,6 +35,7 @@ async function setup() {
     candidate: { caption: 'portrait, man, smiling, beard' }, previous: null, updated_at: '2026-10-10T05:30:00Z',
   }, null, 2));
   if (hasFfmpeg) makeVideo(path.join(lib, 'video', 'clip_00001_.mp4'), { seconds: 3, metadata: { prompt: fixture('wan-video.prompt.json').replace(/\s+/g, ' ') } });
+  if (hasFfmpeg) makeAudio(path.join(lib, 'audio', 'tune_00001_.flac'), { seconds: 4 });
   // A Markdown document embedding an image, a video and an image that gets hidden.
   await makePng(path.join(lib, 'story', 'scene.png'), { w: 600, h: 900, color: '#6a4cc0' });
   await makePng(path.join(lib, 'story', 'secret.png'), { w: 400, h: 400, color: '#c04c6a' });

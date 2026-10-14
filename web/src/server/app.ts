@@ -9,7 +9,7 @@ import { CAPTION_JOIN, TAG_SEP, type AssetRow, type Db } from './db.js';
 import { registerGenerate, type GenerateDeps } from './generate/routes.js';
 import type { ChangeEvent, Indexer } from './indexer.js';
 import { markdownRefs, readMarkdown, resolveRef } from './markdown.js';
-import { videoPlayability, mediaType, ownsSidecars } from './media.js';
+import { audioPlayability, videoPlayability, mediaType, ownsSidecars } from './media.js';
 import { unquoteJsonString, type GenerationSummary } from './metadata/comfyui.js';
 import { checkFolder, HttpError, isInside, resolveInside } from './paths.js';
 import { checkTagName, Tags } from './tags.js';
@@ -54,7 +54,7 @@ function assetJson(r: AssetRow, hiddenLibs: ReadonlySet<string>, libPaths: Reado
     duration: r.duration,
     videoCodec: r.video_codec,
     audioCodec: r.audio_codec,
-    playable: r.kind === 'video' ? videoPlayability(r.video_codec) : 'yes',
+    playable: r.kind === 'video' ? videoPlayability(r.video_codec) : r.kind === 'audio' ? audioPlayability(r.audio_codec) : 'yes',
     animated: !!r.animated,
     hasMeta: !!r.has_gen_meta,
     indexState: r.index_state,
@@ -240,9 +240,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get('/api/libraries', async (req) => {
     const counts = new Map(
-      db.all<{ library_id: string; n: number; images: number; videos: number; documents: number }>(
+      db.all<{ library_id: string; n: number; images: number; videos: number; audio: number; documents: number }>(
         `SELECT library_id, count(*) AS n, sum(kind = 'image') AS images, sum(kind = 'video') AS videos,
-           sum(kind = 'markdown') AS documents FROM assets WHERE status = 'ready' AND ${visible(req)} GROUP BY library_id`,
+           sum(kind = 'audio') AS audio, sum(kind = 'markdown') AS documents FROM assets WHERE status = 'ready' AND ${visible(req)} GROUP BY library_id`,
       ).map((r) => [r.library_id, r]),
     );
     const unlocked = unlock.isUnlocked(req);
@@ -252,7 +252,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         const c = counts.get(l.id);
         return {
           id: l.id, name: l.name, writable: l.writable, recursive: l.recursive, showInAll: l.showInAll, hidden: l.hidden,
-          count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0, documents: c?.documents ?? 0,
+          count: c?.n ?? 0, images: c?.images ?? 0, videos: c?.videos ?? 0, audio: c?.audio ?? 0, documents: c?.documents ?? 0,
           available: !!s.realRoot, error: s.error, scanning: s.scanning, lastScanMs: s.lastScanMs,
         };
       }),
@@ -341,7 +341,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       where.push('rating >= ?');
       params.push(minRating);
     }
-    if (q.kind === 'image' || q.kind === 'video' || q.kind === 'markdown') {
+    if (q.kind === 'image' || q.kind === 'video' || q.kind === 'audio' || q.kind === 'markdown') {
       where.push('kind = ?');
       params.push(q.kind);
     }
@@ -427,10 +427,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     writable: c.writable,
   });
 
-  /** Documents have no caption sidecars (see ownsSidecars). */
+  /** Documents and audio have no caption sidecars (see ownsSidecars). */
   const captionAsset = (req: FastifyRequest) => {
     const row = getAsset(req);
-    if (!ownsSidecars(row.name)) throw new HttpError('documents have no caption', 400);
+    if (!ownsSidecars(row.name)) throw new HttpError(`${row.kind === 'audio' ? 'audio files' : 'documents'} have no caption`, 400);
     return row;
   };
 
@@ -668,7 +668,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const rel = lib && path.relative(lib.path, p).split(path.sep).join('/');
     const row = lib && rel ? db.liveAt(lib.id, rel) : undefined;
     if (!row || (isHidden(row) && !unlock.isUnlocked(req))) throw new HttpError('not an image in the gallery', 404);
-    if (row.kind !== 'image') throw new HttpError(`pick an image, not a ${row.kind === 'video' ? 'video' : 'document'}`, 400);
+    if (row.kind !== 'image') throw new HttpError(`pick an image, not ${({ video: 'a video', audio: 'an audio file', markdown: 'a document' } as const)[row.kind]}`, 400);
     return { row, asset: toJson(req, row), file: await assetFile(row) };
   };
 

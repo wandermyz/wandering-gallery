@@ -218,6 +218,22 @@ test('videos play and can be scrubbed', async ({ page }) => {
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.seeking ? -1 : v.currentTime)).toBeGreaterThan(2);
 });
 
+test('audio plays in the viewer and has its own filter', async ({ page }) => {
+  await openGallery(page, 'gallery?lib=lib&folder=audio&kind=audio');
+  const cell = page.locator('.cell[aria-label="tune_00001_.flac"]');
+  await expect(cell.locator('.badge-video')).toContainText('0:04');
+  await expect(page.locator('.cell')).toHaveCount(1);
+  await cell.click();
+  await expect(page.locator('.viewer-name')).toHaveText('tune_00001_.flac');
+  await expect(page.locator('.viewer-sub')).toContainText('0:04');
+  const audio = page.locator('.slide.active audio');
+  await expect(audio).toBeVisible();
+  await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.readyState), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+  expect(await audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(4, 0);
+  await audio.evaluate((a: HTMLAudioElement) => { a.currentTime = 3; });
+  await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.seeking ? -1 : a.currentTime)).toBeGreaterThan(2.5);
+});
+
 test('favorite and rating persist across reloads and show in the grid', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00003_.png');

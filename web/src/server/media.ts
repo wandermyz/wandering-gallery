@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export type MediaKind = 'image' | 'video' | 'markdown';
+export type MediaKind = 'image' | 'video' | 'audio' | 'markdown';
 
 interface TypeInfo {
   kind: MediaKind;
@@ -18,6 +18,14 @@ const TYPES: Record<string, TypeInfo> = {
   '.m4v': { kind: 'video', mime: 'video/mp4' },
   '.webm': { kind: 'video', mime: 'video/webm' },
   '.mov': { kind: 'video', mime: 'video/quicktime' },
+  '.mp3': { kind: 'audio', mime: 'audio/mpeg' },
+  '.m4a': { kind: 'audio', mime: 'audio/mp4' },
+  '.aac': { kind: 'audio', mime: 'audio/aac' },
+  '.wav': { kind: 'audio', mime: 'audio/wav' },
+  '.flac': { kind: 'audio', mime: 'audio/flac' },
+  '.ogg': { kind: 'audio', mime: 'audio/ogg' },
+  '.oga': { kind: 'audio', mime: 'audio/ogg' },
+  '.opus': { kind: 'audio', mime: 'audio/ogg' },
   '.md': { kind: 'markdown', mime: 'text/markdown; charset=utf-8' },
   '.markdown': { kind: 'markdown', mime: 'text/markdown; charset=utf-8' },
 };
@@ -45,11 +53,13 @@ export function sidecarStem(name: string): string | null {
 }
 
 /**
- * Whether a file can own caption sidecars. Documents cannot, so `story.md` next to
- * `story.png` never claims (or moves, or deletes) the image's `story.txt`.
+ * Whether a file can own caption sidecars. Documents and audio cannot, so `story.md`
+ * or `ComfyUI_00001_.flac` next to an image with the same stem never claims (or moves,
+ * or deletes) the image's `.txt`.
  */
 export function ownsSidecars(name: string): boolean {
-  return mediaType(name)?.kind !== 'markdown';
+  const kind = mediaType(name)?.kind;
+  return kind !== 'markdown' && kind !== 'audio';
 }
 
 /** Caption sidecar names for a media file name. */
@@ -81,4 +91,13 @@ export function videoPlayability(codec: string | null | undefined): 'yes' | 'par
     default:
       return 'no';
   }
+}
+
+/** Audio codecs every current browser decodes; others (ALAC, WMA, AC-3…) may not play. */
+export function audioPlayability(codec: string | null | undefined): 'yes' | 'partial' | 'no' | 'unknown' {
+  if (!codec) return 'unknown';
+  const c = codec.toLowerCase();
+  if (['mp3', 'aac', 'flac', 'opus', 'vorbis'].includes(c) || c.startsWith('pcm_')) return 'yes';
+  if (c === 'alac' || c === 'ac3' || c === 'eac3') return 'partial';
+  return 'no';
 }

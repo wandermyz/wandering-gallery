@@ -9,7 +9,7 @@ import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
  * `refs` maps each URL exactly as written in the document to the gallery asset it
  * resolves to (null: a local file that is missing, or hidden while locked). Those
  * become the gallery's own media URLs, so hiding rules apply to embedded media
- * too; an image reference that points to a video becomes a video player.
+ * too; an image reference that points to a video or audio file becomes a player.
  */
 
 /** Same pattern as the server's HTML_URL_ATTR, which collected the refs. */
@@ -27,6 +27,7 @@ function mediaHtml(a: Asset, alt: string, title: string | null): string {
   if (a.kind === 'video') {
     return `<video class="md-video" src="${fileUrl(a)}" poster="${thumbUrl(a)}" controls playsinline preload="metadata"${t}></video>`;
   }
+  if (a.kind === 'audio') return `<audio class="md-audio" src="${fileUrl(a)}" controls preload="metadata"${t}></audio>`;
   if (a.kind === 'image') {
     const size = a.width && a.height ? ` width="${a.width}" height="${a.height}"` : '';
     return `<img class="md-img" src="${displayUrl(a)}" alt="${esc(alt)}"${size} loading="lazy" decoding="async"${t}>`;
@@ -84,6 +85,10 @@ function sanitize(html: string): string {
           node.setAttribute('target', '_blank');
           node.setAttribute('rel', 'noopener noreferrer');
         }
+      }
+      if (node.tagName === 'AUDIO') {
+        node.setAttribute('controls', '');
+        if (!node.hasAttribute('preload')) node.setAttribute('preload', 'metadata');
       }
       if (node.tagName === 'VIDEO') {
         node.setAttribute('playsinline', '');
