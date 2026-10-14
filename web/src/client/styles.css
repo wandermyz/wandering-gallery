@@ -365,6 +365,13 @@ video.media { width: 100%; height: 100%; background: #000; }
 /* Video: keep native controls usable by moving our bottom bar to the top-right on videos. */
 .viewer .slide video { padding-bottom: calc(64px + var(--safe-b)); padding-top: calc(var(--top-h) + var(--safe-t)); }
 
+/* Audio: the cover art (or waveform card) with a player under it, clear of the bottom bar. */
+.slide-audio { flex-direction: column; gap: 20px; padding: calc(var(--top-h) + var(--safe-t) + 12px) 16px calc(80px + var(--safe-b)); }
+.slide-audio .audio-art { flex: 0 1 auto; min-height: 0; width: min(100%, 520px); aspect-ratio: 1; object-fit: contain; border-radius: 12px; }
+.audio-player { width: min(100%, 520px); }
+.audio-player audio { display: block; width: 100%; }
+.md-audio { display: block; width: 100%; margin: 1em 0; }
+
 /* Markdown documents: a scrolling reading column; vertical drags scroll, horizontal swipes move on. */
 /* Text scrolls under the bars, so they get a solid backdrop instead of the gradient. */
 .viewer.doc .viewer-top { padding-bottom: 6px; background: var(--bg); }

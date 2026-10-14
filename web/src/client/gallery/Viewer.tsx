@@ -484,7 +484,7 @@ export function Viewer(props: ViewerProps) {
             <div class="viewer-sub">
               {formatDate(asset.mtimeMs)}
               {asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ''}
-              {asset.kind === 'video' && asset.duration ? ` · ${formatDuration(asset.duration)}` : ''}
+              {(asset.kind === 'video' || asset.kind === 'audio') && asset.duration ? ` · ${formatDuration(asset.duration)}` : ''}
               {` · ${formatBytes(asset.size)}`}
             </div>
           </div>
@@ -553,6 +553,33 @@ function Slide({ asset: a, pos, active, zoomRef, onOpenAsset }: {
     return (
       <div class={cx(cls, 'slide-doc')} style={style}>
         {active ? <MarkdownDoc asset={a} onOpenAsset={onOpenAsset} /> : <img class="media ph" src={thumbUrl(a)} alt="" draggable={false} />}
+      </div>
+    );
+  }
+
+  if (a.kind === 'audio') {
+    const unsupported = a.playable === 'no' || failed;
+    return (
+      <div class={cx(cls, 'slide-audio')} style={style}>
+        <img class="media ph audio-art" src={thumbUrl(a)} alt="" draggable={false} />
+        {active && !unsupported && (
+          <div class="audio-player no-gesture">
+            <audio key={a.id} src={fileUrl(a)} controls preload="metadata" onError={() => setFailed(true)} />
+          </div>
+        )}
+        {active && unsupported && (
+          <div class="media-msg no-gesture">
+            <Icon name="alert" size={28} />
+            <p>
+              This browser can't play this audio
+              {a.audioCodec ? <> (codec: <code>{a.audioCodec}</code>)</> : null}.
+            </p>
+            <p class="muted">The original file is unchanged. Download it to play it in another app.</p>
+            <a class="btn" href={`${fileUrl(a)}&download=1`} download={a.name}>
+              <Icon name="download" size={18} /> Download
+            </a>
+          </div>
+        )}
       </div>
     );
   }

@@ -69,7 +69,10 @@ function ensureResized(file: string, kind: MediaKind, out: string, opts: ThumbOp
     const tmp = `${out}.${process.pid}.tmp`;
     return withSlot(async () => {
       try {
-        const input = kind === 'video' ? await videoFrame(file, opts) : kind === 'markdown' ? await markdownCard(file, opts.size) : file;
+        const input = kind === 'video' ? await videoFrame(file, opts)
+          : kind === 'audio' ? await audioCard(file, opts)
+          : kind === 'markdown' ? await markdownCard(file, opts.size)
+          : file;
         await sharp(input, { failOn: 'none', limitInputPixels: 2 ** 28 })
           .rotate()
           .resize({ width: opts.size, height: opts.size, fit: 'inside', withoutEnlargement: true })
@@ -100,6 +103,30 @@ async function videoFrame(file: string, opts: ThumbOptions): Promise<Buffer> {
   if (buf.length === 0) buf = await grab(null);
   if (buf.length === 0) throw new Error('could not decode a video frame');
   return buf;
+}
+
+/**
+ * Embedded cover art if the file has any, otherwise a waveform card. Square, so the
+ * resize below keeps it at the thumbnail size.
+ */
+async function audioCard(file: string, opts: ThumbOptions): Promise<Buffer> {
+  const base = ['-v', 'error', '-nostdin', '-threads', '1', '-i', path.resolve(file)];
+  const cover = await run(opts.ffmpeg, [...base, '-map', '0:v:0', '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
+    { timeoutMs: 30_000, maxBytes: 32 * 1024 * 1024 }).then((r) => r.stdout, () => Buffer.alloc(0));
+  if (cover.length > 0) {
+    return sharp(cover).resize({ width: opts.size, height: opts.size, fit: 'cover' }).png().toBuffer();
+  }
+  const size = opts.size;
+  const w = Math.round(size * 0.84);
+  const h = Math.round(size * 0.42);
+  const wave = (await run(opts.ffmpeg, [...base, '-filter_complex',
+    `aformat=channel_layouts=mono,showwavespic=s=${w}x${h}:colors=0x8c8cf0:scale=sqrt:draw=full`,
+    '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { timeoutMs: 60_000, maxBytes: 8 * 1024 * 1024 })).stdout;
+  if (wave.length === 0) throw new Error('could not decode the audio');
+  return sharp({ create: { width: size, height: size, channels: 3, background: '#1a1a21' } })
+    .composite([{ input: wave, left: Math.round((size - w) / 2), top: Math.round((size - h) / 2) }])
+    .png()
+    .toBuffer();
 }
 
 /** Removes cached thumbnails whose fingerprint no longer belongs to any asset. */

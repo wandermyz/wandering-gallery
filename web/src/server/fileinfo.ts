@@ -42,7 +42,7 @@ const IEND = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 
  * structure. ComfyUI writes images straight to their final path (no temp file +
  * rename), and video muxers write the `moov` index last (then relocate it to the
  * front for faststart), so a partially written file usually fails these checks.
- * Returns true for formats without a reliable end marker (WebM): those rely on
+ * Returns true for formats without a reliable end marker (WebM, MP3, FLAC, Ogg): those rely on
  * the size/mtime stability window alone.
  */
 export async function looksComplete(file: string): Promise<boolean> {
@@ -70,7 +70,8 @@ export async function looksComplete(file: string): Promise<boolean> {
         const tail = await readAt(fh, size - 1, 1);
         return tail[0] === 0x3b;
       }
-      case '.webp': {
+      case '.webp':
+      case '.wav': {
         const head = await readAt(fh, 0, 12);
         if (head.length < 12 || head.toString('latin1', 0, 4) !== 'RIFF') return false;
         return head.readUInt32LE(4) + 8 <= size;
@@ -78,6 +79,7 @@ export async function looksComplete(file: string): Promise<boolean> {
       case '.mp4':
       case '.m4v':
       case '.mov':
+      case '.m4a':
       case '.avif':
         return await isobmffComplete(fh, size, ext === '.avif' ? 'meta' : 'moov');
       default:

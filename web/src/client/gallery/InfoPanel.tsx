@@ -422,7 +422,7 @@ export function InfoPanel({ asset: a, onClose, onAssetChange, onOpenTag, tagFocu
             <TagEditor asset={a} onChange={onAssetChange} onOpenTag={onOpenTag} focusKey={tagFocus} />
           </Section>
         )}
-        {a.status === 'ready' && a.kind !== 'markdown' && <CaptionSection asset={a} />}
+        {a.status === 'ready' && a.kind !== 'markdown' && a.kind !== 'audio' && <CaptionSection asset={a} />}
         {error && <p class="error-text">Could not load metadata: {error}</p>}
         {!meta && !error && <Spinner label="Loading metadata" />}
         {meta && meta.indexState === 'pending' && <p class="muted pad">Reading metadata…</p>}
@@ -494,7 +494,7 @@ export function InfoPanel({ asset: a, onClose, onAssetChange, onOpenTag, tagFocu
             ['Size', formatBytes(a.size)],
             ['Dimensions', a.width && a.height ? `${a.width} × ${a.height}` : undefined],
             ['Duration', a.duration ? formatDuration(a.duration) : undefined],
-            ['Codec', a.videoCodec ? `${a.videoCodec}${a.audioCodec ? ` + ${a.audioCodec}` : ''}` : undefined],
+            ['Codec', a.videoCodec ? `${a.videoCodec}${a.audioCodec ? ` + ${a.audioCodec}` : ''}` : a.audioCodec ?? undefined],
             ['Type', a.mime + (a.animated ? ' (animated)' : '')],
           ]} />
           <div class="file-actions">

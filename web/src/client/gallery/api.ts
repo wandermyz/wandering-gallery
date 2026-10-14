@@ -9,6 +9,7 @@ export interface Library {
   count: number;
   images: number;
   videos: number;
+  audio: number;
   documents: number;
   available: boolean;
   error: string | null;
@@ -24,7 +25,7 @@ export interface Asset {
   filePath: string | null;
   folder: string;
   name: string;
-  kind: 'image' | 'video' | 'markdown';
+  kind: 'image' | 'video' | 'audio' | 'markdown';
   mime: string;
   size: number;
   mtimeMs: number;
@@ -148,7 +149,7 @@ export interface Query {
   recursive?: boolean;
   favorite?: boolean;
   minRating?: number;
-  kind?: 'image' | 'video' | 'markdown';
+  kind?: 'image' | 'video' | 'audio' | 'markdown';
   caption?: CaptionFilter;
   tag?: string;
   order?: 'asc' | 'desc';

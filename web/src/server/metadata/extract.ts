@@ -113,23 +113,28 @@ async function extractImage(file: string): Promise<Extracted> {
 }
 
 interface ProbeOutput {
-  streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number; duration?: string; tags?: Record<string, string> }[];
+  streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number; duration?: string; tags?: Record<string, string>; disposition?: Record<string, number> }[];
   format?: { duration?: string; tags?: Record<string, string> };
 }
 
-async function extractVideo(file: string, opts: ExtractOptions): Promise<Extracted> {
+const IGNORED_TAGS = ['major_brand', 'minor_version', 'compatible_brands', 'encoder', 'creation_time', 'handler_name', 'vendor_id', 'duration'];
+
+/** Videos and audio: stream info and container tags (ComfyUI SaveVideo/SaveAudio write prompt/workflow there). */
+async function extractAv(file: string, kind: 'video' | 'audio', opts: ExtractOptions): Promise<Extracted> {
   const { stdout } = await run(opts.ffprobe, [
     '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', path.resolve(file),
   ], { timeoutMs: 30_000 });
   const probe = JSON.parse(stdout.toString('utf8')) as ProbeOutput;
-  const video = probe.streams?.find((s) => s.codec_type === 'video');
+  // Cover art in an audio file is an attached picture, not a video.
+  const video = kind === 'video' ? probe.streams?.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic) : undefined;
   const audio = probe.streams?.find((s) => s.codec_type === 'audio');
-  const duration = Number(probe.format?.duration ?? video?.duration);
+  const duration = Number(probe.format?.duration ?? video?.duration ?? audio?.duration);
   const tags: Record<string, string> = {};
-  // Tag keys are case-insensitive in some containers (Matroska upper-cases them).
-  for (const [k, v] of Object.entries(probe.format?.tags ?? {})) {
+  // Tag keys are case-insensitive in some containers (Matroska and Vorbis comments upper-case them).
+  // Ogg/Opus keep their comments on the audio stream rather than the container.
+  for (const [k, v] of Object.entries({ ...(kind === 'audio' ? audio?.tags : {}), ...probe.format?.tags })) {
     const key = k.toLowerCase();
-    if (['major_brand', 'minor_version', 'compatible_brands', 'encoder', 'creation_time', 'handler_name', 'vendor_id', 'duration'].includes(key)) continue;
+    if (IGNORED_TAGS.includes(key)) continue;
     tags[key === 'prompt' || key === 'workflow' || key === 'parameters' ? key : k] = v;
   }
   // VHS (VideoHelperSuite) stores the editor workflow and prompt inside a "comment" JSON.
@@ -154,7 +159,7 @@ async function extractVideo(file: string, opts: ExtractOptions): Promise<Extract
 export async function extract(file: string, kind: MediaKind, opts: ExtractOptions): Promise<Extracted> {
   await fs.promises.access(file, fs.constants.R_OK);
   if (kind === 'markdown') return extractMarkdown(file);
-  return kind === 'video' ? extractVideo(file, opts) : extractImage(file);
+  return kind === 'video' || kind === 'audio' ? extractAv(file, kind, opts) : extractImage(file);
 }
 
 /** Documents carry no generation metadata; their text goes into the search index. */
