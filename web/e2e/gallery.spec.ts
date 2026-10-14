@@ -189,6 +189,21 @@ test('viewer navigates between assets and zooms images', async ({ page }, info) 
   await expect(page.locator('.cell[aria-label="gen_00001_.png"]')).toBeInViewport();
 });
 
+test('going back during a slide leaves the viewer closed (iOS edge-swipe back)', async ({ page }) => {
+  await openGallery(page);
+  await openAsset(page, 'gen_00001_.png');
+  await expect(page.locator('.slide.active img.media.full.shown')).toBeVisible();
+  // Start sliding to the next asset, then go back before the slide animation finishes.
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    history.back();
+  });
+  await expect(page.locator('.viewer')).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await expect(page.locator('.viewer')).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get('a')).toBeNull();
+});
+
 test('videos play and can be scrubbed', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'clip_00001_.mp4');
@@ -255,6 +270,8 @@ test('hidden items leave the grid until unlocked with the passphrase', async ({ 
   await expect(page.locator('.cell[aria-label="gen_00004_.png"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Show hidden items' }).click();
+  // At least 16px, or iOS Safari zooms into the field when it is focused.
+  expect(parseFloat(await page.getByLabel('Passphrase').evaluate((el) => getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
   await page.getByLabel('Passphrase').fill('wrong');
   await page.getByRole('button', { name: 'Unlock' }).click();
   await expect(page.getByRole('alert')).toHaveText('Wrong passphrase');

@@ -855,7 +855,9 @@ export default function GalleryApp() {
             id={route.asset}
             hasMore={list.hasMore}
             onNeedMore={() => void list.loadMore()}
-            onNavigate={(id) => nav({ asset: id }, 'replace')}
+            // Only while the viewer still owns the current entry: a slide finishing after a
+            // browser back would otherwise turn the grid's entry into a viewer one.
+            onNavigate={(id) => { if (readRoute().asset) nav({ asset: id }, 'replace'); }}
             onClose={closeViewer}
             onFavorite={onFavorite}
             onRate={onRate}
