@@ -3,8 +3,8 @@ import { request, type Asset } from '../gallery/api';
 export interface FlowInfo {
   id: string;
   title: string;
-  /** `tags`: description → tags → images. `video`: image + prompt → video. */
-  kind: 'tags' | 'video';
+  /** `tags`: description → tags → images. `typed`: typed tags, checked by search → images. `video`: image + prompt → video. */
+  kind: 'tags' | 'typed' | 'video';
   ready: boolean;
   problem: string | null;
   promptsFile: string;
@@ -20,6 +20,16 @@ export interface ComfyStatus {
   online: boolean;
   error: string | null;
   devices: { name: string; vramTotal: number; vramFree: number }[];
+}
+
+/** A Danbooru tag found by a search. */
+export interface TagHit {
+  tag: string;
+  /** As it goes into a prompt: spaces, brackets escaped. */
+  prompt: string;
+  category: string;
+  posts: number;
+  wiki: string | null;
 }
 
 export interface RunOutput {
@@ -59,6 +69,8 @@ export const genApi = {
   flows: () => request<{ flows: FlowInfo[] }>('GET', '/api/generate/flows'),
   status: () => request<ComfyStatus>('GET', '/api/generate/status'),
   tags: (flow: string, prompt: string, vary: boolean) => request<{ tags: string }>('POST', `/api/generate/flows/${flow}/tags`, { prompt, vary }),
+  /** The k closest Danbooru tags for each query. */
+  searchTags: (queries: string[], k = 5) => request<{ results: Record<string, TagHit[]> }>('POST', '/api/generate/tags/search', { queries, k }),
   start: (flow: string, prompt: string, variations: string[], batch: number) =>
     request<Run>('POST', `/api/generate/flows/${flow}/runs`, { prompt, variations, batch }),
   /** The gallery image at a path copied in the viewer. */

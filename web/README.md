@@ -351,6 +351,20 @@ generate:
       dropTags: [1girl, 1boy, solo]
 ```
 
+#### Typed tags
+
+*Generate → WAI-Illustrious · typed tags* (`/generate/wai-illustrious-typed-tags`)
+skips the LLM: you type the tags and get one variation, rendered as many times
+as you choose. The text box starts with the quality tags.
+
+*Check tags* (or *Check and generate*) looks up every tag that hasn't been checked
+yet with `danbooru-tagger search`. That runs on the CPU, needs no GPU switch and
+takes a few seconds for all the tags together. A picker then offers, per tag, the
+tag as typed (selected, and marked if it isn't a Danbooru tag) and the five
+closest Danbooru tags. Chosen tags replace the typed ones in place. The quality
+tags and tags already checked are not searched again. The flow uses the same
+graph and prompts file as *prompt to tags*.
+
 ### Generating videos
 
 *Generate → MiniMax H3 · image to video* animates a gallery image with

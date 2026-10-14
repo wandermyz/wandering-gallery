@@ -104,6 +104,48 @@ test('tags typed by hand generate images without a description', async ({ page }
   await expect(run.locator('a.gen-thumb')).toHaveCount(2, { timeout: 20_000 });
 });
 
+test('typed tags are checked against Danbooru tags in a picker, then generated', async ({ page }, info) => {
+  await page.goto('/generate/wai-illustrious-typed-tags');
+  await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · typed tags');
+  const tags = page.locator('#typed-tags');
+  // Quality tags are prefilled and never searched.
+  await expect(tags).toHaveValue('masterpiece');
+  await expect(page.getByRole('button', { name: 'Check tags' })).toBeDisabled();
+  await tags.fill('masterpiece, red eyes, catgirl, Red_Eyes');
+  await noFocusZoom(page, info.project.name);
+  await expect(page.getByText('2 tags not checked yet')).toBeVisible();
+  await page.getByRole('button', { name: 'Check and generate' }).click();
+
+  const picker = page.getByRole('dialog', { name: 'Pick tags' });
+  await expect(picker.locator('.tp-tag')).toHaveCount(2);
+  const red = picker.getByRole('group', { name: 'red eyes' });
+  const cat = picker.getByRole('group', { name: 'catgirl' });
+  // The tag as typed comes first and is chosen; a known tag is not offered twice.
+  await expect(red.getByRole('radio')).toHaveCount(6);
+  await expect(red.getByRole('radio').first()).toBeChecked();
+  await expect(red.locator('.tp-opt').first()).toContainText('Danbooru tag');
+  await expect(red.locator('.tp-opt').nth(4)).toContainText('red eyes \\(e.g.o\\)');
+  await expect(cat.locator('.tp-opt').first()).toContainText('not a Danbooru tag');
+  await cat.getByRole('radio', { name: 'catgirl \\(variant 2\\)' }).check();
+  await noHorizontalScroll(page);
+  await picker.getByRole('button', { name: 'Generate 4 images' }).click();
+
+  await expect(picker).toHaveCount(0);
+  await expect(tags).toHaveValue('masterpiece, red eyes, catgirl \\(variant 2\\)');
+  await expect(page.getByText('All tags checked')).toBeVisible();
+  const run = page.locator('.gen-run').first();
+  await expect(run.locator('.gen-run-tags')).toHaveCount(1);
+  await expect(run.locator('.gen-run-tags')).toContainText('catgirl \\(variant 2\\)');
+  await expect(run.locator('a.gen-thumb')).toHaveCount(4, { timeout: 20_000 });
+
+  // Checked tags are not searched again; only new ones are.
+  await tags.fill('masterpiece, red eyes, catgirl \\(variant 2\\), smile');
+  await page.getByRole('button', { name: 'Check tags' }).click();
+  await expect(picker.locator('.tp-tag')).toHaveCount(1);
+  await picker.getByRole('button', { name: 'Keep as typed' }).click();
+  await expect(page.getByRole('button', { name: 'Generate 4 images' })).toBeEnabled();
+});
+
 test('a run still in progress shows again after a reload', async ({ page }) => {
   await page.goto(FLOW);
   await page.locator('#gen-prompt').fill('slow run');
