@@ -50,3 +50,60 @@ test('says when ComfyUI is down and recovers on its own', async ({ page }) => {
   await comfyOnline(true);
   await expect(page.locator('#dash-comfy-h + .cap-pill')).not.toHaveText('Offline', { timeout: 10_000 });
 });
+
+test('cancels a queued and a running job, also ones queued outside the app', async ({ page }) => {
+  await page.goto('/generate/wai-illustrious-tags');
+  await page.locator('.gen-tags').first().fill('masterpiece, cancel from dashboard');
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'More images per variation' }).click();
+  await page.getByRole('button', { name: /^Generate \d+ images$/ }).click();
+  await expect(page.locator('.gen-run')).toHaveCount(1);
+  // A job from elsewhere (ComfyUI's own page, a script), last in line.
+  const r = await fetch('http://127.0.0.1:2397/prompt', {
+    method: 'POST',
+    body: JSON.stringify({ prompt: { 1: { class_type: 'SaveImage', inputs: { filename_prefix: 'outside' } } }, client_id: 'someone-else' }),
+  });
+  const outside = ((await r.json()) as { prompt_id: string }).prompt_id;
+  const status = async (id: string) => ((await (await fetch(`http://127.0.0.1:2397/fake/jobs/${id}`)).json()) as { status: string }).status;
+
+  await page.goto('/dashboard');
+  const running = page.locator('.dash-running');
+  await expect(running).toHaveCount(1);
+  const theirs = page.locator('.dash-jobs').first().locator('.dash-job', { hasText: 'outside' });
+  await expect(theirs).toBeVisible();
+  await expect(running.getByRole('button', { name: /^Cancel / })).toBeVisible();
+  await noHorizontalScroll(page);
+
+  // Asks first, and Escape leaves it alone.
+  await theirs.getByRole('button', { name: 'Cancel outside' }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Remove this job from the queue?');
+  await expect(page.getByRole('alertdialog')).toContainText('not queued from this app');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  expect(await status(outside)).toBe('queued');
+  await theirs.getByRole('button', { name: 'Cancel outside' }).click();
+  await page.getByRole('button', { name: 'Remove job' }).click();
+  await expect(page.locator('.toast')).toContainText('Job removed from the queue');
+  await expect(theirs).toHaveCount(0);
+  expect(await status(outside)).toBe('cancelled');
+
+  // The running one, queued from Generate.
+  await running.getByRole('button', { name: /^Cancel / }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Stop this job?');
+  await expect(page.getByRole('alertdialog')).toContainText('queued from Generate');
+  await page.getByRole('button', { name: 'Stop job' }).click();
+  await expect(page.locator('.toast').last()).toContainText('Job stopped');
+  await expect(page.locator('.dash-job.dash-cancelled').first()).toBeVisible();
+
+  // Generate sees the cancelled image; the rest of the run goes on.
+  await page.goto('/generate/wai-illustrious-tags');
+  const run = page.locator('.gen-run').first();
+  await expect(run.locator('.gen-thumb-ph', { hasText: 'Cancelled' })).toHaveCount(1);
+  await expect(run.locator('.cap-pill')).not.toHaveText('Running', { timeout: 20_000 });
+  await expect(run.locator('.gen-thumb img').first()).toBeVisible();
+});
+
+test('rejects a job id that is not one', async ({ request }) => {
+  const csrf = (await (await request.get('/api/session')).json()).csrf;
+  const r = await request.post('/api/dashboard/jobs/--help/cancel', { headers: { 'x-csrf-token': csrf } });
+  expect(r.status()).toBe(400);
+});

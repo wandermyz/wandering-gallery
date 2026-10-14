@@ -48,4 +48,5 @@ export interface Dashboard {
 
 export const dashApi = {
   get: () => request<Dashboard>('GET', '/api/dashboard'),
+  cancel: (id: string) => request<{ ok: true }>('POST', `/api/dashboard/jobs/${encodeURIComponent(id)}/cancel`),
 };
