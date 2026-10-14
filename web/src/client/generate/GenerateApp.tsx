@@ -5,6 +5,7 @@ import { SectionPage } from '../shell/SectionPage';
 import { goTo, usePathname } from '../shell/router';
 import { genApi, type ComfyStatus, type FlowInfo } from './api';
 import { TagsFlowPage } from './TagsFlowPage';
+import { TypedTagsFlowPage } from './TypedTagsFlowPage';
 import { VideoFlowPage } from './VideoFlowPage';
 
 /** /generate/<flow>: one page per generation flow. */
@@ -54,7 +55,7 @@ export default function GenerateApp() {
             close();
             if (f.id !== id) goTo(`/generate/${f.id}`);
           }}>
-          <Icon name={f.kind === 'video' ? 'play' : 'sparkle'} size={20} />
+          <Icon name={f.kind === 'video' ? 'play' : f.kind === 'typed' ? 'tag' : 'sparkle'} size={20} />
           <span class="lib-name">{f.title}</span>
           {!f.ready && <span class="lib-err">setup</span>}
         </a>
@@ -88,6 +89,7 @@ export default function GenerateApp() {
       {!flows && !error && <Spinner />}
       {flow?.kind === 'video' && <VideoFlowPage key={flow.id} flow={flow} onComfyDown={() => void loadStatus()} />}
       {flow?.kind === 'tags' && <TagsFlowPage key={flow.id} flow={flow} onComfyDown={() => void loadStatus()} />}
+      {flow?.kind === 'typed' && <TypedTagsFlowPage key={flow.id} flow={flow} onComfyDown={() => void loadStatus()} />}
     </SectionPage>
   );
 }

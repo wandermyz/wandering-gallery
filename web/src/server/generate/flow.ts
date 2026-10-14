@@ -16,15 +16,20 @@ import type { JobSource } from './runs.js';
  * config) share that file and use the same graph with a LoRA loader (node 15); an
  * optional `<promptsDir>/<flow id>.yaml` overrides any of its keys (e.g. traits that
  * suit the subject).
+ *
+ * The typed-tags flow (`wai-illustrious-typed-tags`) uses the same graph and prompts
+ * file without the LLM: the tags are typed by hand and checked against Danbooru's with
+ * a tag search, and there is one variation.
  */
 export const FLOW_ID = 'wai-illustrious-tags';
+export const TYPED_FLOW_ID = 'wai-illustrious-typed-tags';
 const PROMPTS_NAME = FLOW_ID;
 
 export interface FlowInfo {
   id: string;
   title: string;
-  /** `tags`: description → tags → images. `video`: image + prompt → video. */
-  kind: 'tags' | 'video';
+  /** `tags`: description → tags → images. `typed`: typed tags, checked by search → images. `video`: image + prompt → video. */
+  kind: 'tags' | 'typed' | 'video';
   ready: boolean;
   /** Why the flow cannot run yet (missing files or keys). */
   problem: string | null;
@@ -65,9 +70,9 @@ export class TagsFlow {
   private readonly apiFile: string;
   private readonly uiFile: string;
 
-  constructor(cfg: GenerateConfig, private readonly lora: LoraFlowConfig | null = null) {
-    this.id = lora ? `wai-illustrious-lora-${lora.id}` : FLOW_ID;
-    this.title = lora ? `WAI-Illustrious · ${lora.title}` : 'WAI-Illustrious · prompt to tags';
+  constructor(cfg: GenerateConfig, private readonly lora: LoraFlowConfig | null = null, private readonly typed = false) {
+    this.id = lora ? `wai-illustrious-lora-${lora.id}` : typed ? TYPED_FLOW_ID : FLOW_ID;
+    this.title = lora ? `WAI-Illustrious · ${lora.title}` : typed ? 'WAI-Illustrious · typed tags' : 'WAI-Illustrious · prompt to tags';
     const template = lora ? 'wai-illustrious-lora-tags' : FLOW_ID;
     this.promptsFile = path.join(cfg.promptsDir, `${PROMPTS_NAME}.yaml`);
     this.overridesFile = lora ? path.join(cfg.promptsDir, `${this.id}.yaml`) : null;
@@ -75,9 +80,13 @@ export class TagsFlow {
     this.uiFile = path.join(cfg.workflowsDir, `${template}.ui.json`);
   }
 
-  /** The prompt-to-tags flow plus one per configured LoRA. */
+  /** The prompt-to-tags flow, one per configured LoRA, and the typed-tags flow. */
   static all(cfg: GenerateConfig): TagsFlow[] {
-    return [new TagsFlow(cfg), ...cfg.loras.map((l) => new TagsFlow(cfg, l))];
+    return [new TagsFlow(cfg), ...cfg.loras.map((l) => new TagsFlow(cfg, l)), new TagsFlow(cfg, null, true)];
+  }
+
+  get kind(): 'tags' | 'typed' {
+    return this.typed ? 'typed' : 'tags';
   }
 
   info(): FlowInfo {
@@ -88,7 +97,7 @@ export class TagsFlow {
     } catch (e) {
       problem = (e as Error).message;
     }
-    return { id: this.id, title: this.title, kind: 'tags', ready: !problem, problem, promptsFile: this.promptsFile, defaultTags };
+    return { id: this.id, title: this.title, kind: this.kind, ready: !problem, problem, promptsFile: this.promptsFile, defaultTags };
   }
 
   /** As a run's job source: fails early when the prompts file is missing. */

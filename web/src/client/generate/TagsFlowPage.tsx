@@ -235,7 +235,7 @@ export function Stepper({ label, value, min, max, onChange, disabled }: {
 
 export const RUN_STATUS: Record<Run['status'], string> = { running: 'Running', completed: 'Done', error: 'Finished with errors', cancelled: 'Cancelled' };
 
-function RunCard({ run, onCancel, onReuse }: { run: Run; onCancel: () => void; onReuse: () => void }) {
+export function RunCard({ run, onCancel, onReuse }: { run: Run; onCancel: () => void; onReuse: () => void }) {
   const done = run.jobs.filter((j) => j.status === 'completed').length;
   return (
     <section class="gen-card gen-run" aria-label={`Run ${formatDate(run.createdAtMs)}`}>

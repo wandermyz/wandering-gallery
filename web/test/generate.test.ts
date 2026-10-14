@@ -10,7 +10,7 @@ import { parseOutputUrl } from '../src/server/generate/comfy.js';
 import { TagsFlow } from '../src/server/generate/flow.js';
 import { VideoFlow, videoCanvas, videoFrames } from '../src/server/generate/video.js';
 import { parseNvidiaSmi, type GpuMonitor } from '../src/server/generate/monitor.js';
-import type { Gpu, Tagger } from '../src/server/generate/tools.js';
+import { promptTag, type Gpu, type TagHit, type Tagger } from '../src/server/generate/tools.js';
 import { makeEnv, makePng, ageAll, tmpDir, type Env } from './helpers.js';
 
 const REPO_WORKFLOWS = path.resolve(import.meta.dirname, '..', '..', 'comfyui', 'workflows');
@@ -97,6 +97,12 @@ class FakeTagger implements Tagger {
     this.log.push('tag end');
     return `tags ${this.requests.length}`;
   }
+  searches: string[][] = [];
+  async search(queries: string[], k: number) {
+    this.searches.push(queries);
+    const hit = (tag: string): TagHit => ({ tag, prompt: promptTag(tag), category: 'general', posts: 10, wiki: null });
+    return Object.fromEntries(queries.map((q) => [q, Array.from({ length: k }, (_, i) => hit(`${q.replace(/ /g, '_')}_${i}`))]));
+  }
 }
 
 class FakeGpu implements Gpu {
@@ -134,6 +140,11 @@ describe('generate flow graphs', () => {
   const dir = tmpDir();
   writePrompts(path.join(dir, 'prompts'));
   const flow = new TagsFlow(parseConfig({ libraries: [{ id: 'a', path: dir }], generate: { promptsDir: path.join(dir, 'prompts') } }).generate);
+
+  it('writes Danbooru tags in prompt form', () => {
+    expect(promptTag('hatsune_miku_(cosplay)')).toBe('hatsune miku \\(cosplay\\)');
+    expect(promptTag('^_^')).toBe('^_^');
+  });
 
   it('keeps prompt texts out of the workflow templates in the repo', () => {
     for (const f of fs.readdirSync(REPO_WORKFLOWS)) {
@@ -277,7 +288,7 @@ describe('generate API', () => {
     env.cfg.generate.loras = [{ id: 'cat', title: 'Cat', lora: 'cat.safetensors', strength: 1, tags: 'mycat', negative: '', dropTags: [] }];
     app = await build();
     const flows = (await app.inject({ url: '/api/generate/flows' })).json().flows;
-    expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat', 'minimax-h3-i2v']);
+    expect(flows.map((f: { id: string }) => f.id)).toEqual(['wai-illustrious-tags', 'wai-illustrious-lora-cat', 'wai-illustrious-typed-tags', 'minimax-h3-i2v']);
     expect((await post('/api/generate/flows/wai-illustrious-lora-cat/tags', { prompt: 'a cat' })).json().tags).toBe('masterpiece, mycat, tags 1');
     const run = (await post('/api/generate/flows/wai-illustrious-lora-cat/runs', { prompt: 'a cat', variations: ['mycat, x'], batch: 1 })).json();
     expect(run.flow).toBe('wai-illustrious-lora-cat');
@@ -286,7 +297,7 @@ describe('generate API', () => {
 
   it('lists the flow and ComfyUI status', async () => {
     await setup();
-    expect((await app.inject({ url: '/api/generate/flows' })).json().flows).toMatchObject([{ id: 'wai-illustrious-tags', ready: true }, { id: 'minimax-h3-i2v', kind: 'video' }]);
+    expect((await app.inject({ url: '/api/generate/flows' })).json().flows).toMatchObject([{ id: 'wai-illustrious-tags', ready: true }, { id: 'wai-illustrious-typed-tags', kind: 'typed', ready: true }, { id: 'minimax-h3-i2v', kind: 'video' }]);
     expect((await app.inject({ url: '/api/generate/status' })).json()).toMatchObject({ online: true, devices: [{ name: 'gpu' }] });
     comfy.online = false;
     expect((await app.inject({ url: '/api/generate/status' })).json()).toMatchObject({ online: false, error: expect.stringMatching(/not running/) });
@@ -333,6 +344,28 @@ describe('generate API', () => {
     expect(comfy.submitted[0].pnginfo).not.toHaveProperty('source_prompt');
     expect((await post('/api/generate/flows/wai-illustrious-tags/runs', { variations: ['x'], batch: 1 })).statusCode).toBe(200);
     expect((await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a', variations: [' '], batch: 1 })).statusCode).toBe(400);
+  });
+
+  it('searches typed tags and runs them as one variation', async () => {
+    await setup();
+    const r = await post('/api/generate/tags/search', { queries: ['red eyes', 'cat ears', 'red eyes'], k: 2 });
+    expect(r.statusCode).toBe(200);
+    expect(tagger.searches).toEqual([['red eyes', 'cat ears']]);
+    expect(r.json().results['cat ears']).toEqual([
+      { tag: 'cat_ears_0', prompt: 'cat ears 0', category: 'general', posts: 10, wiki: null },
+      { tag: 'cat_ears_1', prompt: 'cat ears 1', category: 'general', posts: 10, wiki: null },
+    ]);
+    // Searching takes no GPU turn.
+    expect(log).toEqual([]);
+    expect((await post('/api/generate/tags/search', { queries: [] })).statusCode).toBe(400);
+    expect((await post('/api/generate/tags/search', { queries: ['x'], k: 50 })).statusCode).toBe(400);
+
+    const flow = '/api/generate/flows/wai-illustrious-typed-tags';
+    expect((await post(`${flow}/tags`, { prompt: 'a girl' })).statusCode).toBe(404);
+    expect((await post(`${flow}/runs`, { variations: ['a', 'b'], batch: 1 })).statusCode).toBe(400);
+    const run = (await post(`${flow}/runs`, { variations: ['masterpiece, red eyes'], batch: 3 })).json();
+    expect(run.flow).toBe('wai-illustrious-typed-tags');
+    expect(comfy.submitted.map((s) => s.graph['2'].inputs.text)).toEqual(Array(3).fill('masterpiece, red eyes'));
   });
 
   it('refuses to run without the prompts file', async () => {

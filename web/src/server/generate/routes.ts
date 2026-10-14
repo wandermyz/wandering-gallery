@@ -26,6 +26,8 @@ export interface GenerateDeps {
 
 /** Finished jobs listed on the dashboard. */
 const DASHBOARD_RECENT = 20;
+/** Tags searched in one request. */
+const MAX_SEARCH_QUERIES = 100;
 
 /** A gallery image by absolute path, confined to the libraries (see app.ts). */
 export type ImageAt = (req: FastifyRequest, file: string) => Promise<{ row: AssetRow; asset: unknown; file: string }>;
@@ -75,10 +77,23 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
 
   app.post('/api/generate/flows/:flow/tags', async (req) => {
     const f = getFlow((req.params as { flow: string }).flow);
+    if (f.kind !== 'tags') throw new HttpError('this flow does not generate tags', 404);
     const body = (req.body ?? {}) as { prompt?: unknown; vary?: unknown };
     const prompt = text(body.prompt, 'prompt', MAX_PROMPT);
     const request = f.tagRequest(prompt, body.vary === true);
     return { tags: f.tagsFrom(await exclusive(() => tagger.tags(request))) };
+  });
+
+  // Typed tags → the closest Danbooru tags. CPU only, so it does not take a GPU turn.
+  app.post('/api/generate/tags/search', async (req) => {
+    const body = (req.body ?? {}) as { queries?: unknown; k?: unknown };
+    if (!Array.isArray(body.queries) || body.queries.length < 1 || body.queries.length > MAX_SEARCH_QUERIES) {
+      throw new HttpError(`queries must be a list of 1-${MAX_SEARCH_QUERIES} tags`, 400);
+    }
+    const queries = [...new Set(body.queries.map((q, i) => text(q, `query ${i + 1}`, 200)))];
+    const k = body.k === undefined ? 5 : Number(body.k);
+    if (!Number.isInteger(k) || k < 1 || k > 20) throw new HttpError('k must be an integer 1-20', 400);
+    return { results: await tagger.search(queries, k) };
   });
 
   app.post('/api/generate/flows/:flow/runs', async (req) => {
@@ -90,6 +105,7 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
       throw new HttpError(`variations must be a list of 1-${MAX_VARIATIONS} tag strings`, 400);
     }
     const variations = body.variations.map((v, i) => text(v, `variation ${i + 1}`, MAX_TAGS));
+    if (f.kind === 'typed' && variations.length > 1) throw new HttpError('this flow takes one list of tags', 400);
     const batch = Number(body.batch);
     if (!Number.isInteger(batch) || batch < 1 || batch > MAX_BATCH) throw new HttpError(`batch must be an integer 1-${MAX_BATCH}`, 400);
     return runs.json(await exclusive(() => runs.start(f.source(), prompt, variations, batch)));
