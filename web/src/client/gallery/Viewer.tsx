@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preac
 import { api, displayUrl, fileUrl, thumbUrl, type Asset } from './api';
 import { Icon, IconButton, Spinner, Stars } from '../common/ui';
 import { InfoPanel } from './InfoPanel';
+import { DiagramZoom } from './DiagramZoom';
 import { copyText, cx, formatBytes, formatDate, formatDuration, LOCK_EVENT } from '../common/util';
 
 interface Zoom {
@@ -404,6 +405,7 @@ export function Viewer(props: ViewerProps) {
       }
       lastTap = { t: now, x: e.clientX, y: e.clientY };
       if (onVideo) return; // let native video tap behaviour work
+      if ((e.target as HTMLElement).closest('.md-diagram')) return; // it opens full screen
       if (tapTimer) clearTimeout(tapTimer);
       tapTimer = setTimeout(() => {
         tapTimer = null;
@@ -666,6 +668,7 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lockRev, setLockRev] = useState(0);
+  const [diagram, setDiagram] = useState<SVGSVGElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<HTMLElement>(null);
 
@@ -695,6 +698,7 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
 
   // Diagrams are drawn into the rendered HTML; a new render starts over from the source.
   useEffect(() => {
+    setDiagram(null);
     const el = docRef.current;
     if (html === null || !el || !renderer) return;
     let alive = true;
@@ -710,7 +714,14 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
   }, [html !== null]);
 
   const onClick = (e: MouseEvent) => {
-    const link = (e.target as HTMLElement).closest('a[data-asset]');
+    const target = e.target as HTMLElement;
+    // A diagram opens full screen, to zoom into it (unless its own link was tapped).
+    const svg = target.closest('a') ? null : target.closest('.md-diagram')?.querySelector('svg');
+    if (svg) {
+      setDiagram(svg);
+      return;
+    }
+    const link = target.closest('a[data-asset]');
     if (!link) return;
     e.preventDefault();
     onOpenAsset?.(Number(link.getAttribute('data-asset')));
@@ -731,6 +742,7 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
   return (
     <div class="md-scroll" ref={scrollRef} tabIndex={-1} onClick={onClick}>
       <article class="md" ref={docRef} dangerouslySetInnerHTML={{ __html: html }} />
+      {diagram && <DiagramZoom svg={diagram} onClose={() => setDiagram(null)} />}
     </div>
   );
 }

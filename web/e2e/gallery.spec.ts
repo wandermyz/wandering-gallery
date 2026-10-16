@@ -530,6 +530,32 @@ test('Markdown documents render with their embedded images and videos, and can b
   await expect(doc.locator('.md-diagram svg')).toHaveCount(1);
   await expect(doc.locator('.md-diagram svg')).toContainText('Dusk');
   await expect(doc.locator('pre.md-mermaid-error')).toHaveText('not a diagram');
+  // Tapping a diagram opens it full screen, where it zooms in and out.
+  await doc.locator('.md-diagram').click();
+  const zoomed = page.getByRole('dialog', { name: 'Diagram' });
+  await expect(zoomed.locator('.diagram-zoom-content svg')).toContainText('Dusk');
+  const width = () => zoomed.locator('.diagram-zoom-content svg').evaluate((el) => el.getBoundingClientRect().width);
+  const fitted = await width();
+  await zoomed.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(width).toBeGreaterThan(fitted * 1.4);
+  await zoomed.getByRole('button', { name: 'Fit' }).click();
+  await expect.poll(width).toBeCloseTo(fitted, 0);
+  if (isMobile(info.project.name)) {
+    // Pinch apart zooms; a one-finger drag pans instead of moving to another item.
+    const { width: w, height: h } = page.viewportSize()!;
+    const c = { x: w / 2, y: h / 2 };
+    const a = line({ x: c.x - 20, y: c.y }, { x: c.x - 120, y: c.y });
+    const b = line({ x: c.x + 20, y: c.y }, { x: c.x + 120, y: c.y });
+    await touch(page, a.map((p, i) => [p, b[i]]));
+    await expect.poll(width).toBeGreaterThan(fitted * 2);
+    const left = () => zoomed.locator('.diagram-zoom-content svg').evaluate((el) => el.getBoundingClientRect().left);
+    const before = await left();
+    await touch(page, swipe(line({ x: w * 0.7, y: c.y }, { x: w * 0.3, y: c.y })));
+    await expect.poll(left).toBeLessThan(before - 50);
+  }
+  await page.keyboard.press('Escape');
+  await expect(zoomed).toHaveCount(0);
+  await expect(page.locator('.viewer-name')).toHaveText('tale.md');
 
   // Hiding the embedded image hides it in the document too, until unlocked.
   const secretSrc = await doc.locator('img').nth(1).getAttribute('src');
