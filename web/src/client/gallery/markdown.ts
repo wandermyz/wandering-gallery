@@ -10,6 +10,7 @@ import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
  * resolves to (null: a local file that is missing, or hidden while locked). Those
  * become the gallery's own media URLs, so hiding rules apply to embedded media
  * too; an image reference that points to a video or audio file becomes a player.
+ * ```mermaid code blocks are drawn as diagrams afterwards, by renderDiagrams.
  */
 
 /** Same pattern as the server's HTML_URL_ATTR, which collected the refs. */
@@ -44,6 +45,11 @@ export function renderMarkdown(text: string, refs: Record<string, Asset | null>)
   const md = new Marked({ gfm: true, breaks: false });
   md.use({
     renderer: {
+      code({ text: src, lang }: Tokens.Code) {
+        if ((lang ?? '').trim().toLowerCase() !== 'mermaid') return false;
+        // Shown as source until the diagram is drawn (or if it cannot be).
+        return `<pre class="md-mermaid"><code>${esc(src)}</code></pre>`;
+      },
       image({ href, title, text: alt }: Tokens.Image) {
         const r = local(href);
         if (!r) return false; // external URL: default rendering
@@ -103,4 +109,44 @@ function sanitize(html: string): string {
     ADD_ATTR: ['controls', 'playsinline', 'loop', 'muted', 'poster', 'preload', 'autoplay', ASSET_LINK_ATTR],
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe'],
   });
+}
+
+type Mermaid = typeof import('mermaid')['default'];
+let mermaid: Promise<Mermaid> | null = null;
+let diagramSeq = 0;
+
+/**
+ * Draws the Mermaid diagrams in a rendered document, in place. Mermaid is large, so it
+ * is loaded only for documents that have diagrams. In strict mode it sanitizes labels
+ * and allows no scripts or click handlers. A diagram that fails to parse stays as source.
+ */
+export async function renderDiagrams(root: HTMLElement, alive: () => boolean): Promise<void> {
+  const blocks = [...root.querySelectorAll<HTMLElement>('pre.md-mermaid')];
+  if (!blocks.length) return;
+  mermaid ??= import('mermaid').then(({ default: m }) => {
+    m.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      suppressErrorRendering: true,
+      theme: 'dark',
+      fontFamily: getComputedStyle(document.body).fontFamily,
+    });
+    return m;
+  });
+  const m = await mermaid;
+  // One at a time: Mermaid keeps global state while it lays a diagram out.
+  for (const pre of blocks) {
+    if (!alive() || !pre.isConnected) return;
+    try {
+      const { svg } = await m.render(`md-mermaid-${++diagramSeq}`, pre.textContent ?? '');
+      if (!alive() || !pre.isConnected) return;
+      const fig = document.createElement('div');
+      fig.className = 'md-diagram';
+      fig.innerHTML = svg;
+      pre.replaceWith(fig);
+    } catch (e) {
+      pre.classList.add('md-mermaid-error');
+      pre.title = `Diagram could not be drawn: ${(e as Error).message}`;
+    }
+  }
 }

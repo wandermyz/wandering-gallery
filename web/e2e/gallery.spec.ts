@@ -526,6 +526,11 @@ test('Markdown documents render with their embedded images and videos, and can b
   await video.scrollIntoViewIfNeeded();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
 
+  // Mermaid blocks are drawn as diagrams; one that does not parse stays as source.
+  await expect(doc.locator('.md-diagram svg')).toHaveCount(1);
+  await expect(doc.locator('.md-diagram svg')).toContainText('Dusk');
+  await expect(doc.locator('pre.md-mermaid-error')).toHaveText('not a diagram');
+
   // Hiding the embedded image hides it in the document too, until unlocked.
   const secretSrc = await doc.locator('img').nth(1).getAttribute('src');
   const secretId = Number(/assets\/(\d+)\//.exec(secretSrc!)![1]);

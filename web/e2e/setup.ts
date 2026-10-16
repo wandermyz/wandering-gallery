@@ -44,6 +44,7 @@ async function setup() {
     '# The Tale', '', 'Once upon a time, by the sea.', '', '![The scene](scene.png)', '',
     ...Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1}. The waves rolled in and out, again and again.\n`),
     '<video src="scene.mp4"></video>', '', '![](secret.png)', '', 'See [the scene](scene.png). The end.', '',
+    '```mermaid', 'flowchart LR', '  Dawn --> Dusk', '```', '', '```mermaid', 'not a diagram', '```', '',
   ].join('\n'));
   await makePng(path.join(ro, 'locked.png'), { color: '#777777' });
   // Generate: output folder of the fake ComfyUI (a library hidden from All media) and the

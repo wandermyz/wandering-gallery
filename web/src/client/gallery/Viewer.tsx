@@ -667,6 +667,7 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
   const [error, setError] = useState<string | null>(null);
   const [lockRev, setLockRev] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const docRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const on = () => setLockRev((n) => n + 1);
@@ -691,6 +692,17 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
       alive = false;
     };
   }, [a.id, a.v, lockRev]);
+
+  // Diagrams are drawn into the rendered HTML; a new render starts over from the source.
+  useEffect(() => {
+    const el = docRef.current;
+    if (html === null || !el || !renderer) return;
+    let alive = true;
+    renderer.then((r) => r.renderDiagrams(el, () => alive)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [html]);
 
   // Keyboard scrolling (space, page and arrow keys up/down) works once it has focus.
   useEffect(() => {
@@ -718,7 +730,7 @@ function MarkdownDoc({ asset: a, onOpenAsset }: { asset: Asset; onOpenAsset?: (i
   if (html === null) return <div class="slide-loading"><Spinner /></div>;
   return (
     <div class="md-scroll" ref={scrollRef} tabIndex={-1} onClick={onClick}>
-      <article class="md" dangerouslySetInnerHTML={{ __html: html }} />
+      <article class="md" ref={docRef} dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }
