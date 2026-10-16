@@ -408,8 +408,20 @@ video.media { width: 100%; height: 100%; background: #000; }
 .md img { max-height: 85vh; width: auto; object-fit: contain; }
 .md video { width: 100%; max-height: 80vh; background: #000; }
 .md p > img:only-child, .md p > video:only-child { margin: 0 auto; }
-.md-diagram { margin: 0 0 1em; overflow-x: auto; touch-action: pan-x pan-y; }
+.md-diagram { margin: 0 0 1em; overflow-x: auto; touch-action: pan-x pan-y; cursor: zoom-in; }
 .md-diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+/* A diagram full screen: pinch/wheel zoom and drag pan over the viewer. */
+.diagram-zoom { position: fixed; inset: 0; z-index: 50; background: var(--bg); animation: fade .16s ease; touch-action: none; }
+.diagram-zoom-box { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; }
+.diagram-zoom-box:active { cursor: grabbing; }
+.diagram-zoom-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.diagram-zoom-content svg { display: block; max-width: none; }
+.diagram-zoom-bar {
+  position: absolute; left: 50%; bottom: calc(16px + var(--safe-b)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 2px; padding: 2px 4px; border-radius: 999px;
+  background: rgba(30, 30, 36, .92); border: 1px solid var(--line);
+}
+.diagram-zoom-fit { min-width: 44px; height: 44px; padding: 0 8px; font-size: 14px; font-weight: 600; }
 .md-mermaid-error { border: 1px dashed #ff6b81; }
 .md-missing { display: inline-block; padding: 2px 8px; border-radius: 6px; border: 1px dashed var(--line); color: var(--muted); font-size: .85em; }
 @media (min-width: 900px) { .md { font-size: 18px; } }
