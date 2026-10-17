@@ -1,1 +1,38 @@
-{"libraries":[{"id":"comfyui","name":"ComfyUI Outputs","writable":true,"recursive":true,"showInAll":true,"hidden":false,"count":310,"images":295,"videos":9,"audio":4,"documents":2,"available":true,"error":null,"scanning":false,"lastScanMs":1792205897138},{"id":"refs","name":"References","writable":false,"recursive":true,"showInAll":false,"hidden":false,"count":24,"images":24,"videos":0,"audio":0,"documents":0,"available":true,"error":null,"scanning":false,"lastScanMs":1792205897144}]}
+{
+  "libraries": [
+    {
+      "id": "comfyui",
+      "name": "ComfyUI Outputs",
+      "writable": true,
+      "recursive": true,
+      "showInAll": true,
+      "hidden": false,
+      "count": 51,
+      "images": 35,
+      "videos": 10,
+      "audio": 4,
+      "documents": 2,
+      "available": true,
+      "error": null,
+      "scanning": false,
+      "lastScanMs": 1792000000000
+    },
+    {
+      "id": "refs",
+      "name": "References",
+      "writable": false,
+      "recursive": true,
+      "showInAll": false,
+      "hidden": false,
+      "count": 24,
+      "images": 24,
+      "videos": 0,
+      "audio": 0,
+      "documents": 0,
+      "available": true,
+      "error": null,
+      "scanning": false,
+      "lastScanMs": 1792000000000
+    }
+  ]
+}

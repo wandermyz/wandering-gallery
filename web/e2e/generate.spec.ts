@@ -24,6 +24,7 @@ test.beforeEach(async ({ page }) => {
   await comfyOnline(true);
 });
 
+// parity: GEN-01
 test('describe, tag variations, edit them and generate a batch', async ({ page }, info) => {
   await page.goto('/generate');
   await expect(page).toHaveURL(new RegExp(`${FLOW}$`));
@@ -90,6 +91,7 @@ test('describe, tag variations, edit them and generate a batch', async ({ page }
   await expect(page.locator('.gen-run')).toHaveCount(0);
 });
 
+// parity: GEN-02
 test('tags typed by hand generate images without a description', async ({ page }) => {
   await page.goto('/generate/wai-illustrious-lora-mycat');
   const tags = page.locator('.gen-tags').first();
@@ -104,6 +106,7 @@ test('tags typed by hand generate images without a description', async ({ page }
   await expect(run.locator('a.gen-thumb')).toHaveCount(2, { timeout: 20_000 });
 });
 
+// parity: GEN-03
 test('a run still in progress shows again after a reload', async ({ page }) => {
   await page.goto(FLOW);
   await page.locator('#gen-prompt').fill('slow run');
@@ -119,6 +122,7 @@ test('a run still in progress shows again after a reload', async ({ page }) => {
   await expect(run.locator('.cap-pill')).toHaveText('Done');
 });
 
+// parity: GEN-04
 test('a running batch can be cancelled', async ({ page }) => {
   await page.goto(FLOW);
   await page.locator('#gen-prompt').fill('cancel me');
@@ -132,6 +136,7 @@ test('a running batch can be cancelled', async ({ page }) => {
   await expect(run.locator('.gen-thumb-ph', { hasText: 'Cancelled' }).first()).toBeVisible();
 });
 
+// parity: GEN-05
 test('shows an error when ComfyUI is not running', async ({ page }) => {
   await comfyOnline(false);
   await page.goto(FLOW);
@@ -148,6 +153,7 @@ test('shows an error when ComfyUI is not running', async ({ page }) => {
   await expect(page.locator('.banner-error[role="alert"]')).toHaveCount(0);
 });
 
+// parity: GEN-06
 test('a LoRA flow has the same form, with its trigger tags in front', async ({ page }) => {
   await page.goto('/generate/wai-illustrious-lora-mycat');
   await expect(page.locator('.topbar h1')).toHaveText('WAI-Illustrious · My cat LoRA');
@@ -164,6 +170,7 @@ test('a LoRA flow has the same form, with its trigger tags in front', async ({ p
   await expect(page.locator('#gen-prompt')).toHaveValue('');
 });
 
+// parity: GEN-07
 test('copy an image path in the viewer, paste it into the video flow and generate a video', async ({ page }, info) => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   await page.goto('/gallery?lib=lib');
@@ -205,6 +212,7 @@ test('copy an image path in the viewer, paste it into the video flow and generat
   await expect(page.locator('.viewer-name')).toHaveText(/^fake_\d+_\.mp4$/);
 });
 
+// parity: GEN-08
 test('the video flow explains a path that is not a gallery image', async ({ page }) => {
   await page.goto('/generate/minimax-h3-i2v');
   await page.locator('#vid-path').fill('/etc/passwd');

@@ -1,1 +1,39 @@
-{"flows":[{"id":"wai-illustrious-tags","title":"WAI-Illustrious · prompt to tags","kind":"tags","ready":true,"problem":null,"promptsFile":"/Users/wandermyz.bot/Projects/wandering-gallery/web/.tmp/ios-dev/prompts/wai-illustrious-tags.yaml","defaultTags":"masterpiece, best quality, amazing quality"},{"id":"wai-illustrious-lora-mycat","title":"WAI-Illustrious · My cat LoRA","kind":"tags","ready":true,"problem":null,"promptsFile":"/Users/wandermyz.bot/Projects/wandering-gallery/web/.tmp/ios-dev/prompts/wai-illustrious-tags.yaml","defaultTags":"masterpiece, best quality, amazing quality, mycat, cat"},{"id":"minimax-h3-i2v","title":"MiniMax H3 · image to video","kind":"video","ready":true,"problem":null,"promptsFile":"","defaultTags":"","seconds":[5,8,10,12,15],"defaultSeconds":5}]}
+{
+  "flows": [
+    {
+      "id": "wai-illustrious-tags",
+      "title": "WAI-Illustrious · prompt to tags",
+      "kind": "tags",
+      "ready": true,
+      "problem": null,
+      "promptsFile": "/srv/gallery/prompts/wai-illustrious-tags.yaml",
+      "defaultTags": "masterpiece, best quality, amazing quality"
+    },
+    {
+      "id": "wai-illustrious-lora-mycat",
+      "title": "WAI-Illustrious · My cat LoRA",
+      "kind": "tags",
+      "ready": true,
+      "problem": null,
+      "promptsFile": "/srv/gallery/prompts/wai-illustrious-tags.yaml",
+      "defaultTags": "masterpiece, best quality, amazing quality, mycat, cat"
+    },
+    {
+      "id": "minimax-h3-i2v",
+      "title": "MiniMax H3 · image to video",
+      "kind": "video",
+      "ready": true,
+      "problem": null,
+      "promptsFile": "",
+      "defaultTags": "",
+      "seconds": [
+        5,
+        8,
+        10,
+        12,
+        15
+      ],
+      "defaultSeconds": 5
+    }
+  ]
+}

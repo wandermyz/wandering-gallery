@@ -31,6 +31,7 @@ final class DashboardUITests: XCTestCase {
         add(a)
     }
 
+    // parity: DASH-01, DASH-03
     @MainActor
     func testRunningJobAndCancel() throws {
         let queued = expectation(description: "jobs queued")

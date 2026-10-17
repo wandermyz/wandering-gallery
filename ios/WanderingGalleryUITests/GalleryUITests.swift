@@ -37,6 +37,7 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.buttons["viewer-info"].waitForExistence(timeout: 5))
     }
 
+    // parity: VIEW-05, INFO-01, TAG-01, GAL-02
     func testViewerFavoriteRateTagAndDetails() {
         openSeededImage()
         shot("viewer")
@@ -92,12 +93,14 @@ final class GalleryUITests: XCTestCase {
         }
     }
 
+    // parity: VIEW-03
     func testVideoControlsClearOfBars() {
         let video = openVideo("wan_00001_.mp4")
         assertControlsClearOfBars(video)
         shot("video")
     }
 
+    // parity: VIEW-03
     func testTallVideoFillsScreenAndGoesFullScreen() {
         let video = openVideo("tall_00001_.mp4")
         assertControlsClearOfBars(video)
@@ -122,6 +125,7 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(NSPredicate(format: "hittable == true").evaluate(with: viewerClose) || viewerClose.waitForHittable())
     }
 
+    // parity: VIEW-01
     func testSwipeBetweenItems() {
         openFirstImage()
         let first = app.staticTexts["viewer-title"].label
@@ -132,6 +136,7 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.buttons["grid-filters"].waitForExistence(timeout: 5))
     }
 
+    // parity: TRASH-01
     func testTrashAndRestore() {
         openFirstImage()
         let name = app.staticTexts["viewer-title"].label
@@ -150,6 +155,7 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(row.waitForNonExistence(timeout: 10))
     }
 
+    // parity: HID-01
     func testUnlockShowsHiddenLibrary() {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         // Still unlocked from an earlier run (the unlock outlives the app): lock first.
@@ -170,6 +176,7 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Vault"].waitForNonExistence(timeout: 10))
     }
 
+    // parity: TAG-01, GAL-01
     func testTagsAndFolders() {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.staticTexts["Tags"].tap()

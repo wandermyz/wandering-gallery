@@ -17,6 +17,7 @@ async function noHorizontalScroll(page: Page) {
   expect(sw).toBeLessThanOrEqual(cw);
 }
 
+// parity: SHELL-01
 test('pre-section URLs land on the same gallery view', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/gallery$/);
@@ -34,6 +35,7 @@ test('pre-section URLs land on the same gallery view', async ({ page }) => {
   await expect(page).toHaveURL(/\/gallery$/);
 });
 
+// parity: SHELL-02
 test('sections switch from the rail or the drawer and keep the gallery view', async ({ page }, info) => {
   const mobile = isMobile(info.project.name);
   await page.goto('/gallery?lib=lib&folder=portraits');
@@ -71,6 +73,7 @@ test('sections switch from the rail or the drawer and keep the gallery view', as
   await expect(page.locator('.cell')).toHaveCount(2);
 });
 
+// parity: VIEW-02
 test('closing the viewer with the back button stays in the gallery', async ({ page }) => {
   await page.goto('/gallery?lib=lib&folder=portraits');
   await page.locator('.cell[aria-label="p1.jpg"]').click();
@@ -81,6 +84,7 @@ test('closing the viewer with the back button stays in the gallery', async ({ pa
   await expect(page.locator('.cell')).toHaveCount(2);
 });
 
+// parity: SHELL-03
 test('nothing scrolls sideways on narrow and wide screens', async ({ page }, info) => {
   const sizes = isMobile(info.project.name) ? [null] : [{ width: 320, height: 640 }, { width: 899, height: 700 }, { width: 900, height: 700 }, { width: 1920, height: 1080 }];
   for (const size of sizes) {

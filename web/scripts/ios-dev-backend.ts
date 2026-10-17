@@ -5,6 +5,7 @@
 //
 //   npm run build && npm run dev:ios            # keeps the data between runs
 //   npm run dev:ios -- --reset                  # starts over
+//   IOS_DEV_ROOT, IOS_DEV_PORT, IOS_DEV_IMAGES   # another data folder / port / fewer images
 //
 // Listens on 127.0.0.1:2399 only. The simulator uses http://localhost:2399; a phone or iPad
 // goes through Tailscale Serve over HTTPS (set up once, it persists):
@@ -25,7 +26,9 @@ const HTTPS_PORT = Number(process.env.IOS_DEV_HTTPS_PORT ?? 23399);
 const COMFY_PORT = PORT + 1;
 const PASSPHRASE = 'ios dev passphrase';
 const web = path.resolve(import.meta.dirname, '..');
-const root = path.join(web, '.tmp/ios-dev');
+const root = path.resolve(web, process.env.IOS_DEV_ROOT ?? '.tmp/ios-dev');
+/** How many generated images (fewer for quick runs such as the API contract check). */
+const IMAGES = Number(process.env.IOS_DEV_IMAGES ?? 300);
 const reset = process.argv.includes('--reset');
 
 const DAY = 86_400_000;
@@ -73,9 +76,9 @@ async function buildLibrary() {
   console.log('ios-dev: generating media…');
 
   // ~300 ComfyUI outputs over the last 30 days, a few per day, in date folders some days.
-  for (let i = 1; i <= 300; i++) {
+  for (let i = 1; i <= IMAGES; i++) {
     const [w, h] = pick(SIZES);
-    const ageMs = Math.floor((i / 300) * 30 * DAY + rand() * DAY * 0.5);
+    const ageMs = Math.floor((i / IMAGES) * 30 * DAY + rand() * DAY * 0.5);
     const day = new Date(now - ageMs).toISOString().slice(0, 10);
     const sub = i % 3 === 0 ? day : '';
     const file = path.join(out, sub, `ComfyUI_${String(i).padStart(5, '0')}_.png`);

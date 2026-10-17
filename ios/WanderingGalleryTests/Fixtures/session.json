@@ -1,1 +1,6 @@
-{"csrf":"XRKfB2JhN1uPiIZzshxoKx5eNapjpYdN","hiddenEnabled":true,"unlockMinutes":15,"unlockedForMs":0}
+{
+  "csrf": "csrf-token",
+  "hiddenEnabled": true,
+  "unlockMinutes": 15,
+  "unlockedForMs": 1792000000000
+}

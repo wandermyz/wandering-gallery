@@ -1,1 +1,107 @@
-{"atMs":1792205966773,"comfy":{"url":"http://127.0.0.1:2400","online":true,"error":null,"running":[],"pending":[],"recent":[]},"gpu":{"now":{"atMs":1792205966773,"name":"NVIDIA Fake GPU 16GB","util":80,"memUsedMib":11800,"memTotalMib":16303,"tempC":66,"powerW":210.5,"powerLimitW":300},"history":[{"atMs":1792205966773,"name":"NVIDIA Fake GPU 16GB","util":80,"memUsedMib":11800,"memTotalMib":16303,"tempC":66,"powerW":210.5,"powerLimitW":300}],"error":null},"workload":{"status":{"mode":"comfy","strata":{"service":true,"reachable":true,"loaded":false},"comfy":{"service":true,"reachable":true,"running":0,"pending":0,"holds_models":true},"gpu":{"total_mib":16303,"free_mib":4000,"strata_mib":0,"comfy_mib":11800,"other_mib":503},"last_event":{"time":"2026-10-13T17:25:15-07:00","event":"switch","to":"comfy","ok":true,"previous":"strata"}},"error":null}}
+{
+  "atMs": 1792000000000,
+  "comfy": {
+    "url": "http://127.0.0.1:2411",
+    "online": true,
+    "error": null,
+    "running": [],
+    "pending": [],
+    "recent": [
+      {
+        "id": "fake-2",
+        "status": "completed",
+        "createdAtMs": 1792000000000,
+        "startedAtMs": 1792000000000,
+        "endedAtMs": 1792000000000,
+        "error": null,
+        "clientId": null,
+        "title": null,
+        "model": null,
+        "output": {
+          "filename": "fake_00002_.png",
+          "subfolder": "",
+          "type": "output",
+          "asset": null
+        },
+        "flow": "wai-illustrious-tags",
+        "progress": null
+      },
+      {
+        "id": "fake-1",
+        "status": "completed",
+        "createdAtMs": 1792000000000,
+        "startedAtMs": 1792000000000,
+        "endedAtMs": 1792000000000,
+        "error": null,
+        "clientId": null,
+        "title": null,
+        "model": null,
+        "output": {
+          "filename": "fake_00001_.png",
+          "subfolder": "",
+          "type": "output",
+          "asset": null
+        },
+        "flow": "wai-illustrious-tags",
+        "progress": null
+      }
+    ]
+  },
+  "gpu": {
+    "now": {
+      "atMs": 1792000000000,
+      "name": "NVIDIA Fake GPU 16GB",
+      "util": 0,
+      "memUsedMib": 11800,
+      "memTotalMib": 16303,
+      "tempC": 66,
+      "powerW": 210.5,
+      "powerLimitW": 300
+    },
+    "history": [
+      {
+        "atMs": 1792000000000,
+        "name": "NVIDIA Fake GPU 16GB",
+        "util": 0,
+        "memUsedMib": 11800,
+        "memTotalMib": 16303,
+        "tempC": 66,
+        "powerW": 210.5,
+        "powerLimitW": 300
+      }
+    ],
+    "error": null
+  },
+  "workload": {
+    "status": {
+      "mode": "comfy",
+      "strata": {
+        "service": true,
+        "reachable": true,
+        "loaded": false
+      },
+      "comfy": {
+        "service": true,
+        "reachable": true,
+        "running": 0,
+        "pending": 0,
+        "holds_models": true
+      },
+      "gpu": {
+        "total_mib": 16303,
+        "free_mib": 4000,
+        "strata_mib": 0,
+        "comfy_mib": 11800,
+        "other_mib": 503
+      },
+      "last_event": {
+        "time": "2026-10-13T17:25:15-07:00",
+        "event": "switch",
+        "to": "comfy",
+        "ok": true,
+        "previous": "strata"
+      }
+    },
+    "error": null
+  }
+}

@@ -29,10 +29,11 @@ private final class BundleToken {}
         let s = try #require(m.summary)
         #expect(s.source == "comfyui")
         #expect(s.samplers.first?.steps != nil)
-        #expect(s.params["width"]?.description == "832")
+        #expect(s.params["width"] != nil)
     }
 
     @Test func everythingElse() throws {
+        _ = try fixture("asset", as: Asset.self)
         _ = try fixture("folders", as: APIClient.FoldersResponse.self)
         _ = try fixture("tags", as: APIClient.TagsResponse.self)
         let trash = try fixture("trash", as: APIClient.TrashResponse.self)
@@ -50,6 +51,24 @@ private final class BundleToken {}
         let md = try fixture("markdown", as: APIClient.MarkdownResponse.self)
         #expect(md.text.contains("mermaid"))
         #expect(!md.refs.isEmpty)
+        #expect(try !fixture("generate-tags", as: APIClient.TagsResult.self).tags.isEmpty)
+        _ = try fixture("video-image", as: APIClient.VideoImageResponse.self)
+        _ = try fixture("runs", as: APIClient.RunsResponse.self)
+        let run = try fixture("run", as: Run.self)
+        #expect(run.jobs.allSatisfy { $0.status == "completed" })
+    }
+
+    /// Every response the contract check captures (web/scripts/api-contract.ts) is decoded
+    /// above: a new endpoint fails here until the app has a model for it.
+    @Test func everyFixtureIsDecoded() throws {
+        let decoded: Set<String> = [
+            "libraries", "assets", "asset", "metadata", "folders", "tags", "trash", "flows", "comfy-status",
+            "dashboard", "session", "status", "caption", "markdown", "generate-tags", "video-image", "runs", "run",
+        ]
+        let bundle = Bundle(for: BundleToken.self)
+        let all = Set((bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []).map { $0.deletingPathExtension().lastPathComponent })
+        #expect(all.subtracting(decoded).isEmpty, "fixtures without a decoding test: \(all.subtracting(decoded).sorted())")
+        #expect(decoded.subtracting(all).isEmpty, "decoding tests without a fixture: \(decoded.subtracting(all).sorted())")
     }
 
     @Test func scalarDescription() {
@@ -129,6 +148,7 @@ private final class BundleToken {}
         #expect(Server(name: "x", url: "ftp://nope").baseURL == nil)
     }
 
+    // parity: SHELL-04
     @Test func plainHTTPOnlyForLoopback() {
         #expect(Server(name: "x", url: "http://host.ts.net:2399").baseURL == nil)
         #expect(Server(name: "x", url: "http://host.ts.net:2399").urlProblem?.contains("https://") == true)

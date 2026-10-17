@@ -55,6 +55,7 @@ final class GenerateUITests: XCTestCase {
         shot(app, "generate-done")
     }
 
+    // parity: GEN-01
     @MainActor
     func testTagsFlow() {
         let app = open("wai-illustrious-tags")
@@ -111,6 +112,7 @@ final class GenerateUITests: XCTestCase {
         XCTAssertTrue(app.buttons["generate-tags-button"].waitForExistence(timeout: 5))
     }
 
+    // parity: GEN-07
     @MainActor
     func testVideoFlow() {
         let app = open("minimax-h3-i2v")
