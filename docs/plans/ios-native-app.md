@@ -106,9 +106,10 @@ The repo already has fakes used by Playwright: `e2e/fake-comfy.mjs` (ComfyUI HTT
 9. Dashboard.
 10. Polish (iPad layout, haptics, accessibility, empty/error states), README, ios-dist publish.
 
-## Open questions
+## Decisions
 
-- iOS 17 minimum OK? (Others use 16; 17 gives `@Observable` and better scroll APIs.)
-- `ios/` in this repo (proposed) vs a separate repo?
-- Keep the web app as is (yes, assumed) — the native app is an additional client.
-- iPad: full support or iPhone-first with a reasonable iPad layout (proposed)?
+- iOS 17 minimum; iPhone and iPad (split view with a sidebar on iPad).
+- `ios/` in this repo; the web app stays as it is, the native app is another client.
+- The backend is picked in Settings (any number of saved servers).
+- No backend changes were needed. The Markdown renderer reuses the web's code, bundled
+  for a `WKWebView` (`npm run build:ios-markdown`).

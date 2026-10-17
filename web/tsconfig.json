@@ -6,5 +6,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["test/**/*.ts", "e2e/**/*.ts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["test/**/*.ts", "e2e/**/*.ts", "vite.config.ts", "vite.ios.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }
