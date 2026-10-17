@@ -2,10 +2,12 @@ import SwiftUI
 import UIKit
 
 /// A pinch / double-tap zoomable image (UIScrollView), reporting whether it is zoomed and
-/// single taps (which wait for a double tap to fail).
+/// single taps (which wait for a double tap to fail). At zoom 1 the image fits inside
+/// `fitInsets` (clear of the viewer's bars); zoomed in, it can use the whole view.
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage?
     @Binding var zoomed: Bool
+    var fitInsets = EdgeInsets()
     var onSingleTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView {
@@ -14,11 +16,13 @@ struct ZoomableImage: UIViewRepresentable {
             if zoomed != z { zoomed = z }
         }
         v.onSingleTap = onSingleTap
+        v.fitInsets = fitInsets
         return v
     }
 
     func updateUIView(_ v: ZoomScrollView, context: Context) {
         v.onSingleTap = onSingleTap
+        v.fitInsets = fitInsets
         v.setImage(image)
         if !zoomed, v.zoomScale > v.minimumZoomScale { v.setZoomScale(v.minimumZoomScale, animated: true) }
     }
@@ -28,6 +32,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private let imageView = UIImageView()
     var onZoomChange: (Bool) -> Void = { _ in }
     var onSingleTap: () -> Void = {}
+    var fitInsets = EdgeInsets() {
+        didSet { if fitInsets != oldValue { layoutImage(reset: true) } }
+    }
     private var lastBoundsSize = CGSize.zero
 
     override init(frame: CGRect) {
@@ -41,6 +48,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         imageView.contentMode = .scaleAspectFit
         imageView.isAccessibilityElement = true
         imageView.accessibilityTraits = .image
+        imageView.accessibilityIdentifier = "viewer-image"
         addSubview(imageView)
 
         let double = UITapGestureRecognizer(target: self, action: #selector(doubleTap(_:)))
@@ -73,11 +81,16 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         center()
     }
 
-    /// Fits the image to the bounds at zoom 1; max zoom shows the image at least at 1:1 pixels.
+    /// The area the image fits in at zoom 1.
+    private var fitArea: CGRect {
+        bounds.inset(by: UIEdgeInsets(top: fitInsets.top, left: fitInsets.leading, bottom: fitInsets.bottom, right: fitInsets.trailing))
+    }
+
+    /// Fits the image to `fitArea` at zoom 1; max zoom shows the image at least at 1:1 pixels.
     private func layoutImage(reset: Bool) {
-        guard let img = imageView.image, bounds.width > 0, bounds.height > 0 else { return }
+        guard let img = imageView.image, fitArea.width > 0, fitArea.height > 0 else { return }
         if reset { zoomScale = 1 }
-        let fit = min(bounds.width / img.size.width, bounds.height / img.size.height)
+        let fit = min(fitArea.width / img.size.width, fitArea.height / img.size.height)
         imageView.frame = CGRect(x: 0, y: 0, width: img.size.width * fit, height: img.size.height * fit)
         contentSize = imageView.frame.size
         minimumZoomScale = 1
@@ -87,10 +100,18 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         onZoomChange(false)
     }
 
+    /// Centers the image in `fitArea`, moving toward the view's edges as it grows past it
+    /// (the image never leaves a gap at an edge it could fill).
     private func center() {
-        let w = max(0, (bounds.width - contentSize.width) / 2)
-        let h = max(0, (bounds.height - contentSize.height) / 2)
-        contentInset = UIEdgeInsets(top: h, left: w, bottom: h, right: w)
+        let area = fitArea
+        func lead(_ size: CGFloat, _ inset: CGFloat, _ areaLen: CGFloat, _ boundsLen: CGFloat) -> CGFloat {
+            min(max(0, inset + (areaLen - size) / 2), max(0, boundsLen - size))
+        }
+        let top = lead(contentSize.height, fitInsets.top, area.height, bounds.height)
+        let left = lead(contentSize.width, fitInsets.leading, area.width, bounds.width)
+        contentInset = UIEdgeInsets(
+            top: top, left: left,
+            bottom: max(0, bounds.height - top - contentSize.height), right: max(0, bounds.width - left - contentSize.width))
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }

@@ -56,6 +56,7 @@ never reused.
 | VIEW-06 | Share or save the original | ✅ | untested | |
 | VIEW-07 | Copy the file's path | untested | untested | |
 | VIEW-08 | Keyboard shortcuts (←/→, F, 0–5, I, T, Delete, Esc) | untested | untested | iOS: with a hardware keyboard |
+| VIEW-09 | An image fits between the viewer's bars, clear of the title and date | ✅ | ✅ | |
 
 ## Details
 

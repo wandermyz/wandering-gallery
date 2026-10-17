@@ -6,12 +6,14 @@ struct ImagePage: View {
     @Environment(AppModel.self) private var model
     let asset: Asset
     @Binding var zoomed: Bool
+    /// Keeps the image (at zoom 1) clear of the viewer's bars.
+    var fitInsets = EdgeInsets()
     let onTap: () -> Void
     @State private var full: UIImage?
     @State private var failed = false
 
     var body: some View {
-        ZoomableImage(image: full ?? ImageLoader.shared.cached(model.client.thumbURL(asset)), zoomed: $zoomed, onSingleTap: onTap)
+        ZoomableImage(image: full ?? ImageLoader.shared.cached(model.client.thumbURL(asset)), zoomed: $zoomed, fitInsets: fitInsets, onSingleTap: onTap)
             .overlay {
                 if full == nil && !failed { ProgressView().tint(.white) }
                 if failed {

@@ -125,6 +125,22 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(NSPredicate(format: "hittable == true").evaluate(with: viewerClose) || viewerClose.waitForHittable())
     }
 
+    // parity: VIEW-09
+    func testTallImageClearOfBars() {
+        openFirstImage()  // the seed's images are 9:16, taller than the space between the bars
+        // The pager keeps the neighbours' pages around: the one on screen.
+        let images = app.images.matching(identifier: "viewer-image")
+        XCTAssertTrue(images.firstMatch.waitForExistence(timeout: 10))
+        let width = app.windows.firstMatch.frame.width
+        guard let image = images.allElementsBoundByIndex.first(where: { $0.frame.minX >= 0 && $0.frame.minX < width }) else {
+            return XCTFail("no image on screen")
+        }
+        let date = app.staticTexts["viewer-subtitle"].frame, fav = app.buttons["viewer-favorite"].frame
+        shot("tall-image")
+        XCTAssertGreaterThan(image.frame.minY, date.maxY, "image at \(image.frame) under the date line at \(date)")
+        XCTAssertLessThan(image.frame.maxY, fav.minY)
+    }
+
     // parity: VIEW-01
     func testSwipeBetweenItems() {
         openFirstImage()

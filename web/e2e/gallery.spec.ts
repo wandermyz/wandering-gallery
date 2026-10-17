@@ -193,6 +193,25 @@ test('viewer navigates between assets and zooms images', async ({ page }, info) 
   await expect(page.locator('.cell[aria-label="gen_00001_.png"]')).toBeInViewport();
 });
 
+// parity: VIEW-09
+test('an image fits between the viewer bars, clear of the title', async ({ page }) => {
+  await openGallery(page);
+  await openAsset(page, 'gen_00001_.png');
+  const img = page.locator('.slide.active img.media.full.shown');
+  await expect(img).toBeVisible();
+  // The picture inside the image box (object-fit: contain).
+  const pic = await img.evaluate((el: HTMLImageElement) => {
+    const r = el.getBoundingClientRect();
+    const fit = Math.min(r.width / el.naturalWidth, r.height / el.naturalHeight);
+    const h = el.naturalHeight * fit;
+    return { top: r.top + (r.height - h) / 2, bottom: r.top + (r.height + h) / 2 };
+  });
+  const title = (await page.locator('.viewer-title').boundingBox())!;
+  const fav = (await page.locator('.viewer-bottom .fav-btn').boundingBox())!;
+  expect(pic.top).toBeGreaterThanOrEqual(title.y + title.height);
+  expect(pic.bottom).toBeLessThanOrEqual(fav.y);
+});
+
 // parity: VIEW-02
 test('going back during a slide leaves the viewer closed (iOS edge-swipe back)', async ({ page }) => {
   await openGallery(page);
