@@ -63,6 +63,36 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Positive"].waitForExistence(timeout: 5) || app.staticTexts["POSITIVE"].exists)
     }
 
+    func testVideoControlsClearOfBars() {
+        let search = app.searchFields["Filter by filename"]
+        XCTAssertTrue(search.waitForExistence(timeout: 15))
+        search.tap()
+        search.typeText("wan_00001_")
+        let cell = app.descendants(matching: .any)["cell-wan_00001_.mp4"]
+        XCTAssertTrue(cell.waitForExistence(timeout: 15))
+        cell.tap()
+        let close = app.buttons["viewer-close"], favorite = app.buttons["viewer-favorite"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        // Tap the video to show the system player's controls: they sit between the viewer's bars.
+        let video = app.otherElements["Video"]
+        XCTAssertTrue(video.waitForExistence(timeout: 10))
+        video.tap()
+        let scrubber = app.sliders.firstMatch
+        XCTAssertTrue(scrubber.waitForExistence(timeout: 5))
+        shot("video")
+        let top = close.frame.maxY, bottom = favorite.frame.minY
+        XCTAssertGreaterThan(scrubber.frame.minY, top)
+        XCTAssertLessThan(scrubber.frame.maxY, bottom)
+        let names = ["AirPlay", "Mute", "Unmute", "Play", "Pause", "Full Screen", "Skip"]
+        let player = app.buttons.allElementsBoundByIndex.filter { b in
+            b.exists && names.contains { b.label.contains($0) }
+        }
+        XCTAssertFalse(player.isEmpty)
+        for b in player {
+            XCTAssertTrue(b.frame.minY > top && b.frame.maxY < bottom, "\(b.label) at \(b.frame) overlaps a bar")
+        }
+    }
+
     func testSwipeBetweenItems() {
         openFirstImage()
         let first = app.staticTexts["viewer-title"].label
