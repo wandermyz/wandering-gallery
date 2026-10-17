@@ -40,16 +40,6 @@ struct DashboardView: View {
             }
             .background(Theme.background)
             .navigationTitle("Dashboard")
-            .toolbar {
-                if let sub = subtitle {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Text(sub)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("dash-status")
-                    }
-                }
-            }
             .refreshable { await load() }
             .task(id: visible) {
                 guard visible else { return }
@@ -104,13 +94,6 @@ struct DashboardView: View {
             onCancel: { confirming = $0 },
             onOpen: { job, asset in preview = DashPreview(asset: asset, title: job.output?.filename ?? "Output") }
         )
-    }
-
-    private var subtitle: String? {
-        guard let c = data?.comfy else { return nil }
-        if !c.online { return "ComfyUI offline" }
-        if !c.running.isEmpty { return "ComfyUI busy · \(c.pending.count) queued" }
-        return "ComfyUI idle"
     }
 
     private var confirmTitle: String {
