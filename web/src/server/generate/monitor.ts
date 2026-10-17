@@ -13,9 +13,10 @@ export interface GpuSample {
   powerLimitW: number | null;
 }
 
-/** `gpu-workload status --json`: who holds the GPU (see that tool's docstring). */
+/** `vhotseat status --json`: who holds the GPU. `mode` is a workload's name, `none` when
+ * nothing holds it, or `conflict`. */
 export interface Workload {
-  mode: 'strata' | 'comfy' | 'conflict' | string;
+  mode: 'strata' | 'comfy' | 'none' | 'conflict' | string;
   strata: { service: boolean; reachable: boolean; loaded: boolean };
   comfy: { service: boolean; reachable: boolean; running: number; pending: number; holds_models: boolean };
   gpu: { total_mib: number | null; free_mib: number | null; strata_mib: number; comfy_mib: number; other_mib: number; error?: string };
@@ -26,7 +27,7 @@ export interface Workload {
 export interface GpuMonitor {
   /** The latest card reading and the ones before it (oldest first), or an error. */
   card(): Promise<{ now: GpuSample | null; history: GpuSample[]; error: string | null }>;
-  /** null when gpu-workload is not configured. */
+  /** null when vhotseat is not configured. */
   workload(): Promise<{ status: Workload | null; error: string | null } | null>;
   close?(): void;
 }
@@ -53,7 +54,7 @@ export function parseNvidiaSmi(line: string, atMs: number): GpuSample | null {
 
 /**
  * nvidia-smi for the card, sampled every few seconds while someone has the dashboard
- * open (so it can draw the last minutes), and `gpu-workload status` on request.
+ * open (so it can draw the last minutes), and `vhotseat status` on request.
  */
 export class CliGpuMonitor implements GpuMonitor {
   private readonly samples: GpuSample[] = [];
@@ -111,7 +112,7 @@ export class CliGpuMonitor implements GpuMonitor {
             return { status: JSON.parse(out.trim().split('\n').pop() ?? '') as Workload, error: null };
           } catch (e) {
             const err = e as NodeJS.ErrnoException;
-            return { status: null, error: err.code === 'ENOENT' ? `gpu-workload not found ("${cli}"); set generate.gpuWorkload in the config` : err.message };
+            return { status: null, error: err.code === 'ENOENT' ? `vhotseat not found ("${cli}"); set generate.gpuWorkload in the config` : err.message };
           }
         })(),
       };

@@ -66,7 +66,7 @@ export interface GenerateConfig {
   comfyCli: string;
   /** danbooru-tagger executable (description → tags). */
   tagger: string;
-  /** gpu-workload executable, run before queueing ComfyUI jobs; null when there is none. */
+  /** vhotseat executable (hands the GPU between the LLM and ComfyUI), run before queueing ComfyUI jobs; null when there is none. */
   gpuWorkload: string | null;
   /** Library that holds ComfyUI's output folder (to show results), or null. */
   outputLibrary: string | null;
@@ -268,7 +268,7 @@ export function parseConfig(raw: unknown, baseDir = process.cwd()): AppConfig {
       comfyui,
       comfyCli: str(generate.comfyCli, 'generate.comfyCli', 'comfy-cli'),
       tagger: str(generate.tagger, 'generate.tagger', 'danbooru-tagger'),
-      gpuWorkload: generate.gpuWorkload === false ? null : str(generate.gpuWorkload, 'generate.gpuWorkload', 'gpu-workload'),
+      gpuWorkload: generate.gpuWorkload === false ? null : str(generate.gpuWorkload, 'generate.gpuWorkload', 'vhotseat'),
       outputLibrary,
       inputLibrary,
       workflowsDir: resolvePath(str(generate.workflowsDir, 'generate.workflowsDir', REPO_WORKFLOWS)),

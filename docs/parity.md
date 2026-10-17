@@ -99,3 +99,4 @@ never reused.
 | DASH-02 | Says when ComfyUI is down and recovers on its own | ✅ | untested | |
 | DASH-03 | Cancel queued and running jobs | ✅ | ✅ | |
 | DASH-04 | Rejects a job id that isn't one | ✅ | n/a | Server behavior |
+| DASH-05 | Says the GPU is free (vhotseat mode `none`) when nothing holds it | ✅ | pending | web done on Linux 2026-10-17; iOS: add `"none": ("Free", .plain, "Nothing holds the GPU; whichever side asks next loads.")` to `WorkloadCard.modes` in `DashboardGpu.swift`. No API change (`mode` was already a string). |

@@ -1,4 +1,13 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+
+/** What the fake vhotseat reports as holding the GPU (see e2e/fake-vhotseat.mjs). */
+const GPU_MODE_FILE = '.tmp/fake-vhotseat-mode';
+function gpuMode(mode: 'comfy' | 'none') {
+  if (mode === 'comfy') return rmSync(GPU_MODE_FILE, { force: true });
+  mkdirSync('.tmp', { recursive: true });
+  writeFileSync(GPU_MODE_FILE, mode);
+}
 
 async function comfyOnline(online: boolean) {
   await fetch('http://127.0.0.1:2397/fake/online', { method: 'POST', body: JSON.stringify({ online }) });
@@ -11,6 +20,7 @@ async function noHorizontalScroll(page: Page) {
 
 test.beforeEach(async () => {
   await comfyOnline(true);
+  gpuMode('comfy');
 });
 
 // parity: DASH-01
@@ -110,4 +120,18 @@ test('rejects a job id that is not one', async ({ request }) => {
   const csrf = (await (await request.get('/api/session')).json()).csrf;
   const r = await request.post('/api/dashboard/jobs/--help/cancel', { headers: { 'x-csrf-token': csrf } });
   expect(r.status()).toBe(400);
+});
+
+// parity: DASH-05
+test('says the GPU is free when nothing holds it', async ({ page }) => {
+  gpuMode('none');
+  try {
+    await page.goto('/dashboard');
+    const card = page.locator('section', { has: page.locator('#dash-wl-h') });
+    await expect(card.locator('.cap-pill')).toHaveText('Free');
+    await expect(card).toContainText('Nothing holds the GPU; whichever side asks next loads.');
+    await expect(card).toContainText('Switched to none');
+  } finally {
+    gpuMode('comfy');
+  }
 });
