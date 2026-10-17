@@ -56,13 +56,21 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")
+                    LabeledContent("Version", value: Self.version)
                 }
             }
             .navigationTitle("Settings")
             .sheet(item: $editing) { s in NavigationStack { ServerEditor(server: s) } }
             .sheet(isPresented: $adding) { NavigationStack { ServerEditor(server: nil) } }
         }
+    }
+}
+
+extension SettingsView {
+    /// "1.0 (20261016.223951)": the build number says which published build is installed.
+    static var version: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
     }
 }
 
