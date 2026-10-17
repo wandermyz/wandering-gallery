@@ -40,6 +40,7 @@ struct ViewerScreen: View {
             }
             .ignoresSafeArea()
             pager
+                .clipped()  // the neighbouring pages stay hidden as the page shrinks
                 .scaleEffect(1 - min(0.25, dragY / 1600))
                 .offset(y: dragY)
                 .ignoresSafeArea()
@@ -168,7 +169,9 @@ struct ViewerScreen: View {
     private static let playerBottomMargin: CGFloat = 54
 
     private var dismissDrag: some Gesture {
-        DragGesture(minimumDistance: 20)
+        // Measured on the screen: the pager moves with the finger, so its own coordinates would
+        // shift under the drag and make the page jitter.
+        DragGesture(minimumDistance: 20, coordinateSpace: .global)
             .onChanged { v in
                 if abs(v.translation.height) > abs(v.translation.width) * 1.5, v.translation.height > 0 {
                     dragY = v.translation.height

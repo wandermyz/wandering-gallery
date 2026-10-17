@@ -146,7 +146,7 @@ final class GalleryUITests: XCTestCase {
         openFirstImage()
         let window = app.windows.firstMatch
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
-            .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)))
+            .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)), withVelocity: 120, thenHoldForDuration: 0.5)
         XCTAssertTrue(app.buttons["viewer-info"].waitForNonExistence(timeout: 5))
         let cell = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'cell-'")).firstMatch
         XCTAssertTrue(cell.waitForHittable())
