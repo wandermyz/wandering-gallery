@@ -83,8 +83,8 @@ struct PlayerPage: View {
     }
 }
 
-/// AVPlayerViewController filling its frame, with its controls pushed in by `controlsInsets`
-/// (on top of whatever safe area it already gets, so they're never counted twice).
+/// AVPlayerViewController filling its frame, its safe area set to `controlsInsets` (whatever
+/// safe area it already gets is accounted for, so nothing is counted twice).
 struct InsetPlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     let controlsInsets: EdgeInsets
@@ -113,12 +113,13 @@ final class InsetPlayerController: AVPlayerViewController {
         super.viewDidLayoutSubviews()
         let base = view.safeAreaInsets
         let current = additionalSafeAreaInsets
-        // The safe area without our addition, then only what's missing on each edge.
+        // The safe area without our addition, then the difference on each edge (negative
+        // pulls the controls out past the screen's safe area, toward our bars).
         let top = base.top - current.top, bottom = base.bottom - current.bottom
         let left = base.left - current.left, right = base.right - current.right
         let wanted = UIEdgeInsets(
-            top: max(0, controlsInsets.top - top), left: max(0, controlsInsets.leading - left),
-            bottom: max(0, controlsInsets.bottom - bottom), right: max(0, controlsInsets.trailing - right))
+            top: controlsInsets.top - top, left: max(0, controlsInsets.leading - left),
+            bottom: controlsInsets.bottom - bottom, right: max(0, controlsInsets.trailing - right))
         if wanted != current { additionalSafeAreaInsets = wanted }
     }
 }

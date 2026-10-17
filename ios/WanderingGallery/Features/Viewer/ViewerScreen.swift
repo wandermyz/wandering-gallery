@@ -128,8 +128,9 @@ struct ViewerScreen: View {
             // Edge to edge behind the bars (a tall video uses the whole screen); the player's
             // own controls stay clear of the bars.
             PlayerPage(asset: a, active: a.id == currentID, controlsInsets: EdgeInsets(
-                top: insets.top + Self.barHeight, leading: insets.leading,
-                bottom: insets.bottom + Self.barHeight, trailing: insets.trailing))
+                top: insets.top + Self.barHeight + Self.controlsGap - Self.playerTopMargin, leading: insets.leading,
+                bottom: insets.bottom + Self.barHeight + Self.controlsGap - Self.playerBottomMargin, trailing: insets.trailing))
+
         case .markdown:
             MarkdownDocumentView(asset: a, active: a.id == currentID) { target in open(target) }
                 .padding(.top, chrome ? 56 : 0)
@@ -146,8 +147,14 @@ struct ViewerScreen: View {
         return EdgeInsets(top: i.top, leading: i.left, bottom: i.bottom, trailing: i.right)
     }
 
-    /// Room for the top and bottom control bars (plus a little space).
-    private static let barHeight: CGFloat = 56
+    /// Height of the top and bottom control bars.
+    private static let barHeight: CGFloat = 44
+    /// Space between our bars and the player's own controls.
+    private static let controlsGap: CGFloat = 6
+    /// The system player's own margins inside its safe area: above its top buttons and below
+    /// its scrubber (measured on iOS 26). Taken off, so its controls hug our bars.
+    private static let playerTopMargin: CGFloat = 72
+    private static let playerBottomMargin: CGFloat = 54
 
     private var dismissDrag: some Gesture {
         DragGesture(minimumDistance: 20)
