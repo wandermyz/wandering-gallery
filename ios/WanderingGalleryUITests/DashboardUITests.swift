@@ -82,4 +82,33 @@ final class DashboardUITests: XCTestCase {
         app.swipeUp()
         shot(app, "dashboard-recent")
     }
+
+    /// The dev backend's fake vhotseat reports the mode written to `web/.tmp/fake-vhotseat-mode`.
+    private static func gpuMode(_ mode: String) throws {
+        let web = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../web")
+        let tmp = web.appending(path: ".tmp")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        try mode.write(to: tmp.appending(path: "fake-vhotseat-mode"), atomically: true, encoding: .utf8)
+    }
+
+    // parity: DASH-05
+    @MainActor
+    func testGpuFree() throws {
+        try Self.gpuMode("none")
+        defer { try? Self.gpuMode("comfy") }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["WG_SERVER_URL"] = Self.server
+        app.launch()
+        let tab = app.tabBars.buttons["Dashboard"].exists ? app.tabBars.buttons["Dashboard"] : app.buttons["Dashboard"]
+        XCTAssertTrue(tab.firstMatch.waitForExistence(timeout: 15))
+        tab.firstMatch.tap()
+
+        let pill = app.descendants(matching: .any)["dash-workload-mode"].firstMatch
+        XCTAssertTrue(pill.waitForExistence(timeout: 15))
+        let free = NSPredicate { _, _ in pill.label == "Free" }
+        wait(for: [XCTNSPredicateExpectation(predicate: free, object: nil)], timeout: 15)
+        XCTAssertTrue(app.staticTexts["Nothing holds the GPU; whichever side asks next loads."].firstMatch.waitForExistence(timeout: 5))
+        shot(app, "dashboard-gpu-free")
+    }
 }

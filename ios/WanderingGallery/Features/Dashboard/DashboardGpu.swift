@@ -129,6 +129,7 @@ struct WorkloadCard: View {
         "comfy": ("ComfyUI", .running, "ComfyUI may load models; the LLM is unloaded."),
         "strata": ("Strata", .ok, "The local LLM is loaded; ComfyUI holds no models."),
         "conflict": ("Conflict", .error, "Both hold the GPU. The next switch sorts it out."),
+        "none": ("Free", .plain, "Nothing holds the GPU; whichever side asks next loads."),
     ]
 
     var body: some View {
