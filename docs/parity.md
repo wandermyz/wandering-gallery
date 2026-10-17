@@ -49,7 +49,7 @@ never reused.
 | ID | Behavior | Web | iOS | Notes |
 | --- | --- | --- | --- | --- |
 | VIEW-01 | Swipe or arrow between items; pinch and double-tap zoom | ✅ | ✅ | |
-| VIEW-02 | Close the viewer (back button, edge swipe, swipe down) and stay in the gallery | ✅ | untested | |
+| VIEW-02 | Close the viewer (back button, edge swipe, swipe down) and stay in the gallery | ✅ | ✅ | |
 | VIEW-03 | Videos play and can be scrubbed; controls clear of the viewer's bars; full screen | ✅ | ✅ | |
 | VIEW-04 | Audio plays; audio has its own type filter | ✅ | untested | |
 | VIEW-05 | Favorite and 0–5 rating persist and show in the grid | ✅ | ✅ | |

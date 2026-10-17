@@ -22,6 +22,8 @@ struct ViewerScreen: View {
     @State private var shareItem: ShareFile?
     /// The screen's safe area (the pager itself runs edge to edge).
     @State private var insets = EdgeInsets()
+    /// The screen's height, for sliding the page out when swiped away.
+    @State private var height: CGFloat = 1000
 
     private var asset: Asset? { list.items.first { $0.id == currentID } }
     private var index: Int? { list.items.firstIndex { $0.id == currentID } }
@@ -33,14 +35,15 @@ struct ViewerScreen: View {
             // ignores the safe area (as the pager must) reports zero insets itself.
             GeometryReader { g in
                 Color.clear
-                    .onAppear { insets = Self.windowInsets() }
-                    .onChange(of: g.size) { insets = Self.windowInsets() }
+                    .onAppear { insets = Self.windowInsets(); height = g.size.height }
+                    .onChange(of: g.size) { insets = Self.windowInsets(); height = g.size.height }
             }
             .ignoresSafeArea()
             pager
+                .scaleEffect(1 - min(0.25, dragY / 1600))
                 .offset(y: dragY)
                 .ignoresSafeArea()
-            if chrome, let asset {
+            if chrome, dragY == 0, let asset {
                 controls(asset)
                     .transition(.opacity)
             }
@@ -57,6 +60,7 @@ struct ViewerScreen: View {
         .statusBarHidden(!chrome)
         .persistentSystemOverlays(chrome ? .automatic : .hidden)
         .animation(.easeInOut(duration: 0.2), value: chrome)
+        .animation(.easeOut(duration: 0.15), value: dragY == 0)
         .inspector(isPresented: $showInfo) {
             if let asset {
                 InfoPanel(asset: asset, onChange: { list.patch($0) }, onOpenTag: { tag in
@@ -172,11 +176,23 @@ struct ViewerScreen: View {
             }
             .onEnded { v in
                 if dragY > 120 || v.predictedEndTranslation.height > 400 && dragY > 0 {
-                    dismiss()
+                    close()
                 } else {
                     withAnimation(.spring(duration: 0.25)) { dragY = 0 }
                 }
             }
+    }
+
+    /// Swiped down: slides the page the rest of the way out, then closes
+    /// without the cover's own slide-down (which would start again from the top, bars and all).
+    private func close() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            dragY = height
+        } completion: {
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { dismiss() }
+        }
     }
 
     /// An asset linked from a document: the current list if it's there, else on its own.
