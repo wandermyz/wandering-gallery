@@ -123,7 +123,12 @@ struct ViewerScreen: View {
     @ViewBuilder private func page(_ a: Asset) -> some View {
         switch a.kind {
         case .image:
-            ImagePage(asset: a, zoomed: a.id == currentID ? $zoomed : .constant(false), onTap: { chrome.toggle() })
+            // Fits between the bars with a little space (a tall image stays clear of the title),
+            // whether or not the bars are showing, so it doesn't jump on tap. (The page itself
+            // is already inside the safe area.)
+            ImagePage(asset: a, zoomed: a.id == currentID ? $zoomed : .constant(false), fitInsets: EdgeInsets(
+                top: Self.barHeight + Self.imageGap, leading: 0,
+                bottom: Self.barHeight + Self.imageGap, trailing: 0), onTap: { chrome.toggle() })
         case .video, .audio:
             // Edge to edge behind the bars (a tall video uses the whole screen); the player's
             // own controls stay clear of the bars.
@@ -149,6 +154,8 @@ struct ViewerScreen: View {
 
     /// Height of the top and bottom control bars.
     private static let barHeight: CGFloat = 44
+    /// Space between our bars and an image fitted between them.
+    private static let imageGap: CGFloat = 4
     /// Space between our bars and the player's own controls.
     private static let controlsGap: CGFloat = 6
     /// The system player's own margins inside its safe area: above its top buttons and below
@@ -197,6 +204,7 @@ struct ViewerScreen: View {
                     Text(a.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                         .accessibilityIdentifier("viewer-title")
                     Text(subtitle(a)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        .accessibilityIdentifier("viewer-subtitle")
                 }
                 Spacer()
                 if let p = a.filePath {

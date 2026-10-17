@@ -72,23 +72,34 @@ export function Viewer(props: ViewerProps) {
     return { w: r.width, h: r.height, left: r.left, top: r.top };
   };
 
-  /** Displayed (fit-to-screen) size of the current image at scale 1. */
+  /**
+   * Displayed size of the current image at scale 1 (fitted to its box, which sits between the
+   * bars), and its centre's offset from the stage's centre.
+   */
   const contentSize = () => {
     const { w, h } = stageSize();
     const img = zoomElRef.current?.querySelector('img.full, img.ph') as HTMLImageElement | null;
+    // offset* ignore the zoom transform.
+    const bw = img?.offsetWidth || w;
+    const bh = img?.offsetHeight || h;
+    const oy = img ? img.offsetTop + bh / 2 - h / 2 : 0;
     const a = navRef.current.asset;
     const nw = a?.width || img?.naturalWidth || w;
     const nh = a?.height || img?.naturalHeight || h;
-    const fit = Math.min(w / nw, h / nh);
-    return { cw: nw * fit, ch: nh * fit, w, h };
+    const fit = Math.min(bw / nw, bh / nh);
+    return { cw: nw * fit, ch: nh * fit, w, h, oy };
   };
 
   const clampZoom = (z: Zoom): Zoom => {
     const s = Math.min(MAX_SCALE, Math.max(1, z.s));
-    const { cw, ch, w, h } = contentSize();
+    const { cw, ch, w, h, oy } = contentSize();
     const mx = Math.max(0, (cw * s - w) / 2);
-    const my = Math.max(0, (ch * s - h) / 2);
-    return { s, x: Math.min(mx, Math.max(-mx, z.x)), y: Math.min(my, Math.max(-my, z.y)) };
+    // Vertically the image sits off the stage's centre (by oy, scaled with it). Taller than the
+    // stage, it pans until an edge reaches the stage's; shorter, it stays put unless that would
+    // take it past the stage's edge.
+    const my = Math.abs(ch * s - h) / 2;
+    const y = Math.min(my - oy * s, Math.max(-my - oy * s, ch * s > h ? z.y : 0));
+    return { s, x: Math.min(mx, Math.max(-mx, z.x)), y };
   };
 
   const applyZoom = (z: Zoom, animate = false) => {
