@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- HTTPS everywhere; plain HTTP only to localhost (the simulator against a dev server).
+		     The app also refuses non-loopback http:// URLs itself (Server.parse). -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connects to your Wandering Gallery server.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Saves images and videos from the gallery to Photos.</string>
+</dict>
+</plist>

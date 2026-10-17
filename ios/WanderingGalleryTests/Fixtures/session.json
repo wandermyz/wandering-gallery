@@ -1,0 +1,6 @@
+{
+  "csrf": "csrf-token",
+  "hiddenEnabled": true,
+  "unlockMinutes": 15,
+  "unlockedForMs": 1792000000000
+}

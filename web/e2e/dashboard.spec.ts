@@ -13,6 +13,7 @@ test.beforeEach(async () => {
   await comfyOnline(true);
 });
 
+// parity: DASH-01
 test('shows ComfyUI, the GPU and its workload, and follows a run to the gallery', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page.locator('.topbar h1')).toHaveText('Dashboard');
@@ -39,6 +40,7 @@ test('shows ComfyUI, the GPU and its workload, and follows a run to the gallery'
   await expect(page.locator('.viewer')).toBeVisible();
 });
 
+// parity: DASH-02
 test('says when ComfyUI is down and recovers on its own', async ({ page }) => {
   await comfyOnline(false);
   await page.goto('/dashboard');
@@ -51,6 +53,7 @@ test('says when ComfyUI is down and recovers on its own', async ({ page }) => {
   await expect(page.locator('#dash-comfy-h + .cap-pill')).not.toHaveText('Offline', { timeout: 10_000 });
 });
 
+// parity: DASH-03
 test('cancels a queued and a running job, also ones queued outside the app', async ({ page }) => {
   await page.goto('/generate/wai-illustrious-tags');
   await page.locator('.gen-tags').first().fill('masterpiece, cancel from dashboard');
@@ -102,6 +105,7 @@ test('cancels a queued and a running job, also ones queued outside the app', asy
   await expect(run.locator('.gen-thumb img').first()).toBeVisible();
 });
 
+// parity: DASH-04
 test('rejects a job id that is not one', async ({ request }) => {
   const csrf = (await (await request.get('/api/session')).json()).csrf;
   const r = await request.post('/api/dashboard/jobs/--help/cancel', { headers: { 'x-csrf-token': csrf } });

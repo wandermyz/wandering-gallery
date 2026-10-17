@@ -63,6 +63,7 @@ const zoomScale = (page: Page) =>
 
 test.describe.configure({ mode: 'serial' });
 
+// parity: GAL-01
 test('gallery shows a responsive grid with day headers, badges and folders', async ({ page }, info) => {
   await openGallery(page);
   await expect(page.locator('.topbar h1')).toHaveText('All media');
@@ -87,6 +88,7 @@ test('gallery shows a responsive grid with day headers, badges and folders', asy
   await expect(page.locator('.cell[aria-label="gen_00001_.png"]')).toBeVisible();
 });
 
+// parity: GAL-02
 test('filename filter narrows the current view without new requests', async ({ page }) => {
   await openGallery(page, '?lib=lib&folder=portraits');
   await expect(page.locator('.cell')).toHaveCount(2);
@@ -107,6 +109,7 @@ test('filename filter narrows the current view without new requests', async ({ p
   expect(requests).toBe(0);
 });
 
+// parity: GAL-03
 test('scrolling reaches the oldest items and pagination cursors are consistent', async ({ page, request }) => {
   // API pagination with a small page size returns every item exactly once.
   const seen: number[] = [];
@@ -134,6 +137,7 @@ test('scrolling reaches the oldest items and pagination cursors are consistent',
   expect(await page.locator('.cell').count()).toBeLessThanOrEqual(total);
 });
 
+// parity: VIEW-01
 test('viewer navigates between assets and zooms images', async ({ page }, info) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');
@@ -189,6 +193,7 @@ test('viewer navigates between assets and zooms images', async ({ page }, info) 
   await expect(page.locator('.cell[aria-label="gen_00001_.png"]')).toBeInViewport();
 });
 
+// parity: VIEW-02
 test('going back during a slide leaves the viewer closed (iOS edge-swipe back)', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');
@@ -204,6 +209,7 @@ test('going back during a slide leaves the viewer closed (iOS edge-swipe back)',
   expect(new URL(page.url()).searchParams.get('a')).toBeNull();
 });
 
+// parity: VIEW-03
 test('videos play and can be scrubbed', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'clip_00001_.mp4');
@@ -218,6 +224,7 @@ test('videos play and can be scrubbed', async ({ page }) => {
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.seeking ? -1 : v.currentTime)).toBeGreaterThan(2);
 });
 
+// parity: VIEW-04
 test('audio plays in the viewer and has its own filter', async ({ page }) => {
   await openGallery(page, 'gallery?lib=lib&folder=audio&kind=audio');
   const cell = page.locator('.cell[aria-label="tune_00001_.flac"]');
@@ -234,6 +241,7 @@ test('audio plays in the viewer and has its own filter', async ({ page }) => {
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.seeking ? -1 : a.currentTime)).toBeGreaterThan(2.5);
 });
 
+// parity: VIEW-05
 test('favorite and rating persist across reloads and show in the grid', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00003_.png');
@@ -268,6 +276,7 @@ test('favorite and rating persist across reloads and show in the grid', async ({
   await expect(page.locator('.viewer-bottom .fav-btn')).not.toHaveClass(/active/);
 });
 
+// parity: HID-01
 test('hidden items leave the grid until unlocked with the passphrase', async ({ page, request }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00004_.png');
@@ -317,6 +326,7 @@ test('hidden items leave the grid until unlocked with the passphrase', async ({ 
   await expect(await findCell(page, 'gen_00004_.png')).toHaveCount(1);
 });
 
+// parity: INFO-01
 test('ComfyUI metadata panel shows parameters, prompts and raw JSON', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');
@@ -341,6 +351,7 @@ test('ComfyUI metadata panel shows parameters, prompts and raw JSON', async ({ p
   await page.getByRole('button', { name: 'Close details' }).click();
 });
 
+// parity: INFO-02
 test('caption sidecars can be edited in the details panel', async ({ page }, info) => {
   await openGallery(page, '?lib=lib&folder=portraits');
   await expect(page.locator('.cell[aria-label="p1.jpg"] .badge-cap')).toBeVisible();
@@ -372,6 +383,7 @@ test('caption sidecars can be edited in the details panel', async ({ page }, inf
   await page.getByRole('button', { name: 'Close details' }).click();
 });
 
+// parity: TAG-01
 test('tags can be added (new or existing), browsed in the Tags view, and removed', async ({ page }, info) => {
   // Every project shares one server, so tag names are per project.
   const sunset = `sunset ${info.project.name}`;
@@ -431,6 +443,7 @@ test('tags can be added (new or existing), browsed in the Tags view, and removed
   }
 });
 
+// parity: GAL-04
 test('newly generated files appear without reloading', async ({ page }, info) => {
   await openGallery(page);
   const name = `fresh_${info.project.name}.png`;
@@ -445,6 +458,7 @@ test('newly generated files appear without reloading', async ({ page }, info) =>
   await expect(page.locator(`.cell[aria-label="${name}"]`)).toHaveCount(0, { timeout: 15_000 });
 });
 
+// parity: TRASH-01
 test('delete moves the file to trash and restore brings it back intact', async ({ page }, info) => {
   const target = { desktop: 'gen_00010_.png', iphone: 'gen_00011_.png', 'iphone-landscape': 'gen_00012_.png' }[info.project.name]!;
   const file = path.join(LIB, target);
@@ -482,18 +496,21 @@ test('delete moves the file to trash and restore brings it back intact', async (
   await expect(page.locator('.viewer-bottom .star.on')).toHaveCount(0);
 });
 
+// parity: VIEW-06
 test('the viewer offers share/save of the original', async ({ page }) => {
   await openGallery(page);
   await openAsset(page, 'gen_00001_.png');
   await expect(page.getByRole('button', { name: 'Share or save original' })).toBeVisible();
 });
 
+// parity: GAL-05
 test('read-only libraries cannot delete', async ({ page }) => {
   await openGallery(page, '?lib=ro');
   await openAsset(page, 'locked.png');
   await expect(page.getByRole('button', { name: 'Library is read-only' })).toBeDisabled();
 });
 
+// parity: GAL-06
 test('originals are unchanged by browsing and organising', async () => {
   // gen_00001_ was opened, zoomed and had metadata read in every project.
   const before = fs.statSync(path.join(LIB, 'gen_00001_.png'));
@@ -503,6 +520,7 @@ test('originals are unchanged by browsing and organising', async () => {
   expect(names.filter((n) => n.includes('restored'))).toEqual([]);
 });
 
+// parity: MD-01
 test('Markdown documents render with their embedded images and videos, and can be hidden', async ({ page, request }, info) => {
   await openGallery(page, 'gallery?lib=lib&folder=story');
   const cell = page.locator('.cell[aria-label="tale.md"]');

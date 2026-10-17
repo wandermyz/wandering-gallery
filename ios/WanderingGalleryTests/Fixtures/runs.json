@@ -1,0 +1,39 @@
+{
+  "runs": [
+    {
+      "id": "run-id",
+      "flow": "wai-illustrious-tags",
+      "createdAtMs": 1792000000000,
+      "finishedAtMs": null,
+      "prompt": "a cat",
+      "variations": [
+        "masterpiece, 1girl"
+      ],
+      "batch": 2,
+      "jobs": [
+        {
+          "variation": 0,
+          "index": 0,
+          "seed": 0,
+          "promptId": "fake-1",
+          "status": "queued",
+          "progress": 0,
+          "error": null,
+          "outputs": []
+        },
+        {
+          "variation": 0,
+          "index": 1,
+          "seed": 0,
+          "promptId": "fake-2",
+          "status": "queued",
+          "progress": 0,
+          "error": null,
+          "outputs": []
+        }
+      ],
+      "status": "running",
+      "video": null
+    }
+  ]
+}

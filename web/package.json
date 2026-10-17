@@ -16,7 +16,11 @@
     "hash-passphrase": "tsx src/server/hash-passphrase.ts",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "tsx e2e/setup.ts && playwright test"
+    "test:e2e": "tsx e2e/setup.ts && playwright test",
+    "dev:ios": "tsx scripts/ios-dev-backend.ts",
+    "build:ios-markdown": "vite build -c vite.ios.config.ts",
+    "test:contract": "npm run build && tsx scripts/api-contract.ts",
+    "parity": "tsx scripts/parity.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

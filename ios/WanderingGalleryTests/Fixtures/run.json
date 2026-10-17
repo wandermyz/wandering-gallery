@@ -1,0 +1,49 @@
+{
+  "id": "run-id",
+  "flow": "wai-illustrious-tags",
+  "createdAtMs": 1792000000000,
+  "finishedAtMs": 1792000000000,
+  "prompt": "a cat",
+  "variations": [
+    "masterpiece, 1girl"
+  ],
+  "batch": 2,
+  "jobs": [
+    {
+      "variation": 0,
+      "index": 0,
+      "seed": 0,
+      "promptId": "fake-1",
+      "status": "completed",
+      "progress": 0,
+      "error": null,
+      "outputs": [
+        {
+          "filename": "fake_00001_.png",
+          "subfolder": "",
+          "type": "output",
+          "asset": null
+        }
+      ]
+    },
+    {
+      "variation": 0,
+      "index": 1,
+      "seed": 0,
+      "promptId": "fake-2",
+      "status": "completed",
+      "progress": 0,
+      "error": null,
+      "outputs": [
+        {
+          "filename": "fake_00002_.png",
+          "subfolder": "",
+          "type": "output",
+          "asset": null
+        }
+      ]
+    }
+  ],
+  "status": "completed",
+  "video": null
+}
