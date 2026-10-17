@@ -2,6 +2,7 @@
 // second (writing a PNG into the output folder) and exposes the state the fake comfy-cli
 // reads. POST /fake/online {"online": false} makes it behave as if it were stopped.
 // Video jobs (a SaveVideo node) write a short MP4 under video/ with ffmpeg ($FFMPEG).
+// $FAKE_COMFY_STEP_MS slows each of the four steps down (default 250).
 //   node e2e/fake-comfy.mjs <port> <outputDir>
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -15,6 +16,7 @@ const queue = [];
 let online = true;
 let n = 0;
 let count = 0;
+const stepMs = Number(process.env.FAKE_COMFY_STEP_MS) || 250;
 
 async function work() {
   for (;;) {
@@ -23,11 +25,13 @@ async function work() {
     job.status = 'running';
     job.startedAt = Date.now();
     for (let s = 1; s <= 4 && job.status === 'running'; s++) {
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, stepMs));
       job.progress = s / 4;
     }
     if (job.status !== 'running') continue;
     const video = Object.values(job.graph ?? {}).some((n) => n.class_type === 'SaveVideo');
+    // Don't overwrite outputs of an earlier run of the fake on the same folder.
+    while (fs.existsSync(path.join(outDir, `fake_${String(count + 1).padStart(5, '0')}_.png`)) || fs.existsSync(path.join(outDir, 'video', `fake_${String(count + 1).padStart(5, '0')}_.mp4`))) count++;
     const name = `fake_${String(++count).padStart(5, '0')}_.${video ? 'mp4' : 'png'}`;
     const sub = video ? 'video' : '';
     fs.mkdirSync(path.join(outDir, sub), { recursive: true });

@@ -12,3 +12,5 @@ config.yaml
 .env
 dev-config.yaml
 .claude/
+ios/**/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
