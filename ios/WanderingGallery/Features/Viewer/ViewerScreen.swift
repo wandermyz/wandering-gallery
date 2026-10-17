@@ -29,10 +29,12 @@ struct ViewerScreen: View {
     var body: some View {
         ZStack {
             Color.black.opacity(1 - min(0.6, abs(dragY) / 600)).ignoresSafeArea()
+            // The window's safe area, read again when the size changes (rotation). A view that
+            // ignores the safe area (as the pager must) reports zero insets itself.
             GeometryReader { g in
                 Color.clear
-                    .onAppear { insets = g.safeAreaInsets }
-                    .onChange(of: g.safeAreaInsets) { insets = g.safeAreaInsets }
+                    .onAppear { insets = Self.windowInsets() }
+                    .onChange(of: g.size) { insets = Self.windowInsets() }
             }
             .ignoresSafeArea()
             pager
@@ -137,8 +139,17 @@ struct ViewerScreen: View {
         }
     }
 
-    /// Height of the top and bottom control bars.
-    private static let barHeight: CGFloat = 48
+    private static func windowInsets() -> EdgeInsets {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+        let i = window?.safeAreaInsets ?? .zero
+        return EdgeInsets(top: i.top, leading: i.left, bottom: i.bottom, trailing: i.right)
+    }
+
+    /// Room for the top and bottom control bars (plus a little space).
+    private static let barHeight: CGFloat = 56
 
     private var dismissDrag: some Gesture {
         DragGesture(minimumDistance: 20)
