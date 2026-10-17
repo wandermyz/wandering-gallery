@@ -125,13 +125,11 @@ struct ViewerScreen: View {
         case .image:
             ImagePage(asset: a, zoomed: a.id == currentID ? $zoomed : .constant(false), onTap: { chrome.toggle() })
         case .video, .audio:
-            // Inside the safe area and clear of the top and bottom bars, so the player's own
-            // controls (full screen, mute, scrubber) aren't hidden under ours.
-            PlayerPage(asset: a, active: a.id == currentID)
-                .padding(.top, insets.top + Self.barHeight)
-                .padding(.bottom, insets.bottom + Self.barHeight)
-                .padding(.leading, insets.leading)
-                .padding(.trailing, insets.trailing)
+            // Edge to edge behind the bars (a tall video uses the whole screen); the player's
+            // own controls stay clear of the bars.
+            PlayerPage(asset: a, active: a.id == currentID, controlsInsets: EdgeInsets(
+                top: insets.top + Self.barHeight, leading: insets.leading,
+                bottom: insets.bottom + Self.barHeight, trailing: insets.trailing))
         case .markdown:
             MarkdownDocumentView(asset: a, active: a.id == currentID) { target in open(target) }
                 .padding(.top, chrome ? 56 : 0)

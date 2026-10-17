@@ -92,6 +92,11 @@ async function buildLibrary() {
       makeVideo(file, { seconds: 2 + (i % 4), metadata: { prompt: fixture('wan-video.prompt.json').replace(/\s+/g, ' ') } });
       setTime(file, now - i * 2.5 * DAY);
     }
+    // A tall clip (768x1344 at half size), like a vertical image-to-video output.
+    const tall = path.join(out, 'video', 'tall_00001_.mp4');
+    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=384x672:rate=24:duration=6',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', tall]);
+    setTime(tall, now - 0.5 * DAY);
     for (let i = 1; i <= 4; i++) {
       const file = path.join(out, 'audio', `ace_${String(i).padStart(5, '0')}_.${i % 2 ? 'flac' : 'mp3'}`);
       makeAudio(file, { seconds: 5 + i * 2, cover: i % 2 === 0, metadata: { title: `Test tune ${i}` } });

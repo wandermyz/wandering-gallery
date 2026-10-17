@@ -63,34 +63,63 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Positive"].waitForExistence(timeout: 5) || app.staticTexts["POSITIVE"].exists)
     }
 
-    func testVideoControlsClearOfBars() {
+    private func openVideo(_ name: String) -> XCUIElement {
         let search = app.searchFields["Filter by filename"]
         XCTAssertTrue(search.waitForExistence(timeout: 15))
         search.tap()
-        search.typeText("wan_00001_")
-        let cell = app.descendants(matching: .any)["cell-wan_00001_.mp4"]
+        search.typeText(String(name.prefix(while: { $0 != "." })))
+        let cell = app.descendants(matching: .any)["cell-\(name)"]
         XCTAssertTrue(cell.waitForExistence(timeout: 15))
         cell.tap()
-        let close = app.buttons["viewer-close"], favorite = app.buttons["viewer-favorite"]
-        XCTAssertTrue(close.waitForExistence(timeout: 5))
-        // Tap the video to show the system player's controls: they sit between the viewer's bars.
         let video = app.otherElements["Video"]
         XCTAssertTrue(video.waitForExistence(timeout: 10))
+        return video
+    }
+
+    /// Taps the video to show the system player's controls, which sit between the viewer's bars.
+    private func assertControlsClearOfBars(_ video: XCUIElement) {
+        let top = app.buttons["viewer-close"].frame.maxY, bottom = app.buttons["viewer-favorite"].frame.minY
         video.tap()
         let scrubber = app.sliders.firstMatch
         XCTAssertTrue(scrubber.waitForExistence(timeout: 5))
-        shot("video")
-        let top = close.frame.maxY, bottom = favorite.frame.minY
         XCTAssertGreaterThan(scrubber.frame.minY, top)
         XCTAssertLessThan(scrubber.frame.maxY, bottom)
-        let names = ["AirPlay", "Mute", "Unmute", "Play", "Pause", "Full Screen", "Skip"]
-        let player = app.buttons.allElementsBoundByIndex.filter { b in
-            b.exists && names.contains { b.label.contains($0) }
-        }
-        XCTAssertFalse(player.isEmpty)
-        for b in player {
+        let names = ["AirPlay", "Mute", "Unmute", "Play", "Pause", "Skip"]
+        let controls = app.buttons.allElementsBoundByIndex.filter { b in b.exists && names.contains { b.label.contains($0) } }
+        XCTAssertFalse(controls.isEmpty)
+        for b in controls {
             XCTAssertTrue(b.frame.minY > top && b.frame.maxY < bottom, "\(b.label) at \(b.frame) overlaps a bar")
         }
+    }
+
+    func testVideoControlsClearOfBars() {
+        let video = openVideo("wan_00001_.mp4")
+        assertControlsClearOfBars(video)
+        shot("video")
+    }
+
+    func testTallVideoFillsScreenAndGoesFullScreen() {
+        let video = openVideo("tall_00001_.mp4")
+        assertControlsClearOfBars(video)
+        shot("tall-video")
+        // The player's own full-screen button. Its controls fade after a few seconds, so show
+        // them again if a tap only brought them back.
+        let fullScreen = app.buttons["Fullscreen Button"]
+        let done = app.buttons["Close Button"]  // the system full-screen player's own
+        let viewerClose = app.buttons["viewer-close"]
+        // Full screen covers the viewer. (The player's own window isn't always in the
+        // accessibility tree, so its close button can't be relied on.)
+        let inFullScreen = { done.exists || !viewerClose.isHittable }
+        for _ in 0..<3 where !inFullScreen() {
+            if !fullScreen.exists { video.tap() }
+            if fullScreen.waitForExistence(timeout: 3) { fullScreen.tap() }
+            sleep(2)
+        }
+        XCTAssertTrue(inFullScreen())
+        shot("full-screen")
+        if done.exists { done.tap() } else { app.swipeDown(velocity: .fast) }
+        XCTAssertTrue(viewerClose.waitForExistence(timeout: 5))
+        XCTAssertTrue(NSPredicate(format: "hittable == true").evaluate(with: viewerClose) || viewerClose.waitForHittable())
     }
 
     func testSwipeBetweenItems() {
@@ -161,6 +190,11 @@ final class GalleryUITests: XCTestCase {
 }
 
 extension XCUIElement {
+    func waitForHittable(timeout: TimeInterval = 5) -> Bool {
+        let exp = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: self)
+        return XCTWaiter.wait(for: [exp], timeout: timeout) == .completed
+    }
+
     func waitForLabel(not label: String, timeout: TimeInterval = 5) -> Bool {
         let exp = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", label), object: self)
         return XCTWaiter.wait(for: [exp], timeout: timeout) == .completed

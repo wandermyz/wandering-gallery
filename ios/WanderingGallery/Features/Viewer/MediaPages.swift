@@ -36,10 +36,13 @@ func mediaAsset(_ url: URL) -> AVURLAsset {
 }
 
 /// Video or audio, with system playback controls. Pauses when it isn't the current page.
+/// A video fills the screen behind the viewer's bars; `controlsInsets` keeps the player's own
+/// controls (with their full-screen button) clear of them.
 struct PlayerPage: View {
     @Environment(AppModel.self) private var model
     let asset: Asset
     let active: Bool
+    var controlsInsets = EdgeInsets()
     @State private var player: AVPlayer?
 
     var body: some View {
@@ -53,11 +56,13 @@ struct PlayerPage: View {
                     Text(asset.name).font(.headline).multilineTextAlignment(.center)
                 }
                 .padding(40)
+                .padding(.top, controlsInsets.top)
+                .padding(.bottom, controlsInsets.bottom)
             }
             if let player {
-                VideoPlayer(player: player)
+                InsetPlayerView(player: player, controlsInsets: controlsInsets)
                     .opacity(asset.kind == .audio ? 0.85 : 1)
-                    .frame(maxHeight: asset.kind == .audio ? 140 : .infinity)
+                    .frame(maxHeight: asset.kind == .audio ? 140 + controlsInsets.bottom : .infinity)
                     .frame(maxHeight: .infinity, alignment: asset.kind == .audio ? .bottom : .center)
             }
             if asset.playable == "no" {
@@ -75,5 +80,45 @@ struct PlayerPage: View {
             if active { player?.play() } else { player?.pause() }
         }
         .onDisappear { player?.pause() }
+    }
+}
+
+/// AVPlayerViewController filling its frame, with its controls pushed in by `controlsInsets`
+/// (on top of whatever safe area it already gets, so they're never counted twice).
+struct InsetPlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+    let controlsInsets: EdgeInsets
+
+    func makeUIViewController(context: Context) -> InsetPlayerController {
+        let vc = InsetPlayerController()
+        vc.player = player
+        vc.videoGravity = .resizeAspect
+        vc.view.backgroundColor = .clear
+        vc.controlsInsets = controlsInsets
+        return vc
+    }
+
+    func updateUIViewController(_ vc: InsetPlayerController, context: Context) {
+        if vc.player !== player { vc.player = player }
+        vc.controlsInsets = controlsInsets
+    }
+}
+
+final class InsetPlayerController: AVPlayerViewController {
+    var controlsInsets = EdgeInsets() {
+        didSet { if controlsInsets != oldValue { view.setNeedsLayout() } }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let base = view.safeAreaInsets
+        let current = additionalSafeAreaInsets
+        // The safe area without our addition, then only what's missing on each edge.
+        let top = base.top - current.top, bottom = base.bottom - current.bottom
+        let left = base.left - current.left, right = base.right - current.right
+        let wanted = UIEdgeInsets(
+            top: max(0, controlsInsets.top - top), left: max(0, controlsInsets.leading - left),
+            bottom: max(0, controlsInsets.bottom - bottom), right: max(0, controlsInsets.trailing - right))
+        if wanted != current { additionalSafeAreaInsets = wanted }
     }
 }
