@@ -6,6 +6,8 @@ import SwiftUI
 /// open through `onOpenAsset`; diagrams open full screen to zoom into.
 struct MarkdownDocumentView: View {
     let asset: Asset
+    /// The viewer's current page (its videos play; a neighbor page's stay paused).
+    var active = true
     let onOpenAsset: (Asset) -> Void
 
     @Environment(AppModel.self) private var model
@@ -27,7 +29,7 @@ struct MarkdownDocumentView: View {
         ZStack {
             Theme.background.ignoresSafeArea()
             if let doc, error == nil {
-                MarkdownWebView(doc: doc, revision: revision, baseURL: model.client.baseURL, onEvent: handle)
+                MarkdownWebView(doc: doc, revision: revision, baseURL: model.client.baseURL, active: active, onEvent: handle)
                     .opacity(rendered ? 1 : 0)
             }
             if let error {

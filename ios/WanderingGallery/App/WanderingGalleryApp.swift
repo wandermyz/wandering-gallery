@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 @main
@@ -7,6 +8,9 @@ struct WanderingGalleryApp: App {
     init() {
         // Thumbnails and media are cached on disk by URL (the URLs are versioned).
         URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 1024 * 1024 * 1024)
+        // Media plays at the system volume, also with the ring/silent switch on silent (like
+        // Photos). Other apps' audio stops only once something actually plays.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
     }
 
     var body: some Scene {

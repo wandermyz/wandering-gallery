@@ -20,6 +20,8 @@ struct ViewerScreen: View {
     @State private var dragY: CGFloat = 0
     @State private var sharing = false
     @State private var shareItem: ShareFile?
+    /// The screen's safe area (the pager itself runs edge to edge).
+    @State private var insets = EdgeInsets()
 
     private var asset: Asset? { list.items.first { $0.id == currentID } }
     private var index: Int? { list.items.firstIndex { $0.id == currentID } }
@@ -27,6 +29,12 @@ struct ViewerScreen: View {
     var body: some View {
         ZStack {
             Color.black.opacity(1 - min(0.6, abs(dragY) / 600)).ignoresSafeArea()
+            GeometryReader { g in
+                Color.clear
+                    .onAppear { insets = g.safeAreaInsets }
+                    .onChange(of: g.safeAreaInsets) { insets = g.safeAreaInsets }
+            }
+            .ignoresSafeArea()
             pager
                 .offset(y: dragY)
                 .ignoresSafeArea()
@@ -115,14 +123,22 @@ struct ViewerScreen: View {
         case .image:
             ImagePage(asset: a, zoomed: a.id == currentID ? $zoomed : .constant(false), onTap: { chrome.toggle() })
         case .video, .audio:
+            // Inside the safe area and clear of the top and bottom bars, so the player's own
+            // controls (full screen, mute, scrubber) aren't hidden under ours.
             PlayerPage(asset: a, active: a.id == currentID)
-                .padding(.vertical, a.kind == .video ? 0 : 60)
+                .padding(.top, insets.top + Self.barHeight)
+                .padding(.bottom, insets.bottom + Self.barHeight)
+                .padding(.leading, insets.leading)
+                .padding(.trailing, insets.trailing)
         case .markdown:
-            MarkdownDocumentView(asset: a) { target in open(target) }
+            MarkdownDocumentView(asset: a, active: a.id == currentID) { target in open(target) }
                 .padding(.top, chrome ? 56 : 0)
                 .padding(.bottom, chrome ? 64 : 0)
         }
     }
+
+    /// Height of the top and bottom control bars.
+    private static let barHeight: CGFloat = 48
 
     private var dismissDrag: some Gesture {
         DragGesture(minimumDistance: 20)

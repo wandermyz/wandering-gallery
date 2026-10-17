@@ -10,6 +10,10 @@ import styles from '../client/styles.css?inline';
  * URLs resolve. Taps are reported to the app through the `wg` message handler:
  * `{type: 'asset', id}` (a link to an asset or an embedded image), `{type: 'link', href}`
  * (any other link) and `{type: 'diagram', svg}` (a Mermaid diagram, to zoom into).
+ *
+ * Videos play with sound when they scroll into view while the page is the viewer's current
+ * one (`wgSetActive`), and pause when they leave it. A video the user paused stays paused
+ * until it scrolls back into view or the page is shown again.
  */
 
 interface Doc {
@@ -20,6 +24,7 @@ interface Doc {
 declare global {
   interface Window {
     wgRender(doc: Doc): Promise<void>;
+    wgSetActive(active: boolean): void;
     webkit?: { messageHandlers?: { wg?: { postMessage(m: unknown): void } } };
   }
 }
@@ -34,12 +39,46 @@ let render = 0;
 /** Embedded image URL → its asset id, so tapping one opens it. */
 let images = new Map<string, number>();
 
+let active = false;
+const inView = new Set<HTMLVideoElement>();
+
+function play(v: HTMLVideoElement) {
+  v.muted = false;
+  void v.play().catch(() => {});
+}
+
+const observer = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const v = e.target as HTMLVideoElement;
+    if (e.intersectionRatio >= 0.5) {
+      if (!inView.has(v)) {
+        inView.add(v);
+        if (active) play(v);
+      }
+    } else if (inView.delete(v)) {
+      v.pause();
+    }
+  }
+}, { threshold: [0, 0.5] });
+
+window.wgSetActive = (on) => {
+  if (on === active) return;
+  active = on;
+  for (const v of inView) (on ? play(v) : v.pause());
+};
+
 window.wgRender = async (doc) => {
   const seq = ++render;
   const root = document.getElementById('doc')!;
   images = new Map();
   for (const a of Object.values(doc.refs)) if (a?.kind === 'image') images.set(displayUrl(a), a.id);
+  observer.disconnect();
+  inView.clear();
   root.innerHTML = renderMarkdown(doc.text, doc.refs);
+  for (const v of root.querySelectorAll('video')) {
+    v.playsInline = true;
+    observer.observe(v);
+  }
   // Diagrams are drawn after the text is shown.
   void renderDiagrams(root, () => seq === render).catch(() => {});
 };

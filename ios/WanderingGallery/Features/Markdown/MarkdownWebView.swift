@@ -20,6 +20,8 @@ struct MarkdownWebView: UIViewRepresentable {
     /// Bumped for each fetch: a new revision is rendered again.
     let revision: Int
     let baseURL: URL
+    /// The viewer's current page: its videos play as they scroll into view.
+    let active: Bool
     let onEvent: (MarkdownEvent) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(baseURL: baseURL) }
@@ -30,7 +32,8 @@ struct MarkdownWebView: UIViewRepresentable {
         // Its own cookie jar, filled from the app's before each render.
         config.websiteDataStore = .nonPersistent()
         config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = .all
+        // Videos start by themselves, with sound (see `active`).
+        config.mediaTypesRequiringUserActionForPlayback = []
         config.dataDetectorTypes = []
         config.userContentController.add(WeakMessageHandler(c), name: "wg")
         if let script = MarkdownResources.script {
@@ -52,6 +55,7 @@ struct MarkdownWebView: UIViewRepresentable {
     func updateUIView(_ web: WKWebView, context: Context) {
         context.coordinator.onEvent = onEvent
         context.coordinator.show(doc, revision: revision)
+        context.coordinator.setActive(active)
     }
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
@@ -67,6 +71,7 @@ struct MarkdownWebView: UIViewRepresentable {
         private var revision: Int?
         private var pending: APIClient.MarkdownResponse?
         private var last: APIClient.MarkdownResponse?
+        private var active = false
 
         init(baseURL: URL) { self.baseURL = baseURL }
 
@@ -77,6 +82,17 @@ struct MarkdownWebView: UIViewRepresentable {
                 return
             }
             web?.loadHTMLString(template, baseURL: baseURL)
+        }
+
+        func setActive(_ on: Bool) {
+            guard on != active else { return }
+            active = on
+            applyActive()
+        }
+
+        private func applyActive() {
+            guard pageReady else { return }
+            web?.evaluateJavaScript("wgSetActive(\(active))")
         }
 
         func show(_ doc: APIClient.MarkdownResponse, revision: Int) {
@@ -97,6 +113,7 @@ struct MarkdownWebView: UIViewRepresentable {
                 do {
                     let json = String(decoding: try JSONEncoder().encode(Payload(text: doc.text, refs: doc.refs)), as: UTF8.self)
                     _ = try await web.callAsyncJavaScript("await wgRender(JSON.parse(json))", arguments: ["json": json], contentWorld: .page)
+                    applyActive()
                     onEvent(.rendered)
                 } catch {
                     onEvent(.failed(error.localizedDescription))

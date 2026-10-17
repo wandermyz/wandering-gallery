@@ -59,7 +59,6 @@ struct PlayerPage: View {
                     .opacity(asset.kind == .audio ? 0.85 : 1)
                     .frame(maxHeight: asset.kind == .audio ? 140 : .infinity)
                     .frame(maxHeight: .infinity, alignment: asset.kind == .audio ? .bottom : .center)
-                    .padding(.bottom, asset.kind == .audio ? 90 : 0)
             }
             if asset.playable == "no" {
                 Label("This file's format can't be played here.", systemImage: "exclamationmark.triangle")
