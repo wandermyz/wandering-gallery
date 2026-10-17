@@ -124,7 +124,7 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
     }));
   });
 
-  // The dashboard reads ComfyUI's queue and history, nvidia-smi, `gpu-workload status`.
+  // The dashboard reads ComfyUI's queue and history, nvidia-smi, `vhotseat status`.
   app.get('/api/dashboard', async (_req, reply) => {
     reply.header('Cache-Control', 'no-store');
     const [queue, card, workload] = await Promise.all([

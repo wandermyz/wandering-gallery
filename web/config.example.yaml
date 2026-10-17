@@ -47,7 +47,7 @@ trash:
 #   comfyui: http://127.0.0.1:8188   # ComfyUI server
 #   comfyCli: comfy-cli              # comfy-cli executable
 #   tagger: danbooru-tagger          # description -> Danbooru tags (local LLM)
-#   gpuWorkload: gpu-workload        # run `switch comfy` before ComfyUI jobs; false to skip
+#   gpuWorkload: vhotseat            # run `switch comfy` before ComfyUI jobs; false to skip
 #   outputLibrary: comfyui           # library that holds ComfyUI's output folder
 #   inputLibrary: comfyui-input      # library that holds ComfyUI's input folder
 #   promptsDir: ~/.config/wandering-gallery/prompts   # local prompt texts, never in git

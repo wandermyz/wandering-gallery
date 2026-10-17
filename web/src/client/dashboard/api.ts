@@ -42,7 +42,7 @@ export interface Dashboard {
   atMs: number;
   comfy: { url: string; online: boolean; error: string | null; running: DashJob[]; pending: DashJob[]; recent: DashJob[] };
   gpu: { now: GpuSample | null; history: GpuSample[]; error: string | null };
-  /** null when gpu-workload is not configured. */
+  /** null when vhotseat is not configured. */
   workload: { status: Workload | null; error: string | null } | null;
 }
 

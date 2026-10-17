@@ -339,6 +339,7 @@ function Sparkline({ samples }: { samples: GpuSample[] }) {
 const MODES: Record<string, { label: string; cls: string; hint: string }> = {
   comfy: { label: 'ComfyUI', cls: 'run-running', hint: 'ComfyUI may load models; the LLM is unloaded.' },
   strata: { label: 'Strata', cls: 'run-completed', hint: 'The local LLM is loaded; ComfyUI holds no models.' },
+  none: { label: 'Free', cls: '', hint: 'Nothing holds the GPU; whichever side asks next loads.' },
   conflict: { label: 'Conflict', cls: 'run-error', hint: 'Both hold the GPU. The next switch sorts it out.' },
 };
 

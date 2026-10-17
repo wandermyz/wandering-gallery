@@ -167,7 +167,7 @@ nonisolated enum Scalar: Codable, Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-/// Arbitrary JSON (caption classification, gpu-workload events, …).
+/// Arbitrary JSON (caption classification, vhotseat events, …).
 nonisolated enum JSONValue: Codable, Hashable, Sendable, CustomStringConvertible {
     case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
 
@@ -470,7 +470,7 @@ nonisolated struct Dashboard: Codable, Sendable {
     let atMs: Double
     let comfy: ComfyState
     let gpu: Gpu
-    /// nil when gpu-workload is not configured.
+    /// nil when vhotseat is not configured.
     let workload: WorkloadState?
 }
 

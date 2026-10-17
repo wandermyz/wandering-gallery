@@ -1,6 +1,6 @@
 // A populated backend for developing and testing the iOS app (ios/): builds a library of
 // generated media under .tmp/ios-dev on the first run, then starts the real server with the
-// browser tests' stand-ins for ComfyUI, comfy-cli, danbooru-tagger, gpu-workload and
+// browser tests' stand-ins for ComfyUI, comfy-cli, danbooru-tagger, vhotseat and
 // nvidia-smi, and seeds favorites, ratings, tags, hidden items and trash through the API.
 //
 //   npm run build && npm run dev:ios            # keeps the data between runs
@@ -177,7 +177,7 @@ generate:
   comfyui: http://127.0.0.1:${COMFY_PORT}
   comfyCli: ${path.join(web, 'e2e/fake-comfy-cli.mjs')}
   tagger: ${path.join(web, 'e2e/fake-danbooru-tagger.mjs')}
-  gpuWorkload: ${path.join(web, 'e2e/fake-gpu-workload.mjs')}
+  gpuWorkload: ${path.join(web, 'e2e/fake-vhotseat.mjs')}
   outputLibrary: comfyui
   promptsDir: ./prompts
   loras:

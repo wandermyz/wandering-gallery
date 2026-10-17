@@ -51,7 +51,7 @@ library under `web/.tmp/ios-dev`:
 - favorites, ratings, tags (including a hidden tag), hidden items and some trashed items
 
 It then starts the real server on `127.0.0.1:2399`, using the browser tests' stand-ins for ComfyUI, comfy-cli,
-danbooru-tagger, gpu-workload and nvidia-smi. Generated images show up in the gallery as
+danbooru-tagger, vhotseat and nvidia-smi. Generated images show up in the gallery as
 they finish. The passphrase for hidden items is `ios dev passphrase`.
 
 The simulator connects to `http://localhost:2399`. For a real iPhone or iPad, put it behind

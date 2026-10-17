@@ -47,7 +47,7 @@ saved under an old name gets a fresh entry and doesn't inherit the old rating.
   needed for video and audio thumbnails and metadata).
 - For the Generate section: a running ComfyUI and
   [comfy-cli](https://github.com/Comfy-Org/comfy-cli) on the PATH, plus
-  `danbooru-tagger` and `gpu-workload` (both optional to configure; see below).
+  `danbooru-tagger` and `vhotseat` (both optional to configure; see below).
 
 ## Install
 
@@ -178,7 +178,7 @@ links (`/`, `/?lib=…`, `/trash`) are redirected there.
 *Dashboard* (`/dashboard`) is a read-only status page that refreshes every 3 s while
 it is open: ComfyUI's running, queued and recent jobs (from its `/queue` and `/api/jobs`),
 GPU load, VRAM, temperature and power (`nvidia-smi`, set `tools.nvidiaSmi` if it is not on
-the PATH), and who holds the GPU (`gpu-workload status`). It never queues, cancels or
+the PATH), and who holds the GPU (`vhotseat status`). It never queues, cancels or
 switches anything. ComfyUI sends step progress only to the client that queued a job, so a
 progress bar is shown for jobs started from *Generate*. Other jobs show elapsed time.
 
@@ -291,7 +291,7 @@ so it can be dragged back into ComfyUI.
 
 **One GPU, two workloads.** The tagger's LLM and ComfyUI can't share the GPU.
 `danbooru-tagger` claims it for the LLM (waiting for ComfyUI's queue to drain),
-and before queueing any image job the app runs `gpu-workload switch comfy`. The
+and before queueing any image job the app runs `vhotseat switch comfy`. The
 server takes these one at a time, so starting a run never unloads the LLM in the
 middle of a tagging request. If the switch fails, nothing is queued and the page
 shows why.
@@ -323,7 +323,7 @@ generate:
   comfyui: http://127.0.0.1:8188   # ComfyUI server
   comfyCli: comfy-cli              # comfy-cli executable
   tagger: danbooru-tagger          # description -> tags
-  gpuWorkload: gpu-workload        # run before ComfyUI jobs; false if the GPU isn't shared
+  gpuWorkload: vhotseat            # run before ComfyUI jobs; false if the GPU isn't shared
   outputLibrary: comfyui           # library holding ComfyUI's output folder
   promptsDir: ~/.config/wandering-gallery/prompts
 ```
@@ -372,7 +372,7 @@ ComfyUI's input folder as `wg_<content hash>.<ext>` (so picking it again reuses 
 is the official template's default: H3's native canvas (768 px short edge, at
 most 1344×768, matching the image's aspect ratio), 24 fps, and the 8-step turbo
 LoRA. Lengths are snapped up to H3's 17k+5 frame grid. As with images, the app
-runs `gpu-workload switch comfy` before queueing. A 5 s clip at 1344×768 takes
+runs `vhotseat switch comfy` before queueing. A 5 s clip at 1344×768 takes
 about 4 minutes on a 16 GB card.
 
 The graph is `comfyui/workflows/minimax-h3-i2v.{api,ui}.json`, and the video

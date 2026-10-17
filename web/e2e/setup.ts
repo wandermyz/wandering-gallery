@@ -84,7 +84,7 @@ generate:
   comfyui: http://127.0.0.1:2397
   comfyCli: ${path.resolve('e2e/fake-comfy-cli.mjs')}
   tagger: ${path.resolve('e2e/fake-danbooru-tagger.mjs')}
-  gpuWorkload: ${path.resolve('e2e/fake-gpu-workload.mjs')}
+  gpuWorkload: ${path.resolve('e2e/fake-vhotseat.mjs')}
   outputLibrary: comfy
   promptsDir: ./prompts
   loras:

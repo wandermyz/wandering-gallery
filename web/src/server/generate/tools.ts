@@ -58,7 +58,7 @@ export class CliTagger implements Tagger {
   }
 }
 
-/** `gpu-workload switch comfy`: idempotent, about 1 s when Strata has to be unloaded. */
+/** `vhotseat switch comfy`: idempotent, about 1 s when Strata has to be unloaded. */
 export class CliGpu implements Gpu {
   constructor(private readonly cli: string) {}
 
