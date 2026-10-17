@@ -29,8 +29,11 @@ The app runs on iPhone and iPad (split view with a sidebar on iPad), on iOS 17 a
 
 Add the server in **Settings → Add server**. Use the URL you open in the browser, for example
 the Tailscale Serve address `https://my-pc.my-tailnet.ts.net:23334`. The server checks the
-`Host` header, so its hostname must be in `server.allowedHosts`. Plain `http://` works too,
-for example a server on the tailnet or LAN.
+`Host` header, so its hostname must be in `server.allowedHosts`.
+
+The app only connects over HTTPS (an address without a scheme gets `https://`). Plain
+`http://` is refused, except for `localhost` / `127.0.0.1`, which the simulator uses against
+a local dev server.
 
 ## Developing
 
@@ -47,9 +50,17 @@ library under `web/.tmp/ios-dev`:
 - a read-only library and a hidden library
 - favorites, ratings, tags (including a hidden tag), hidden items and some trashed items
 
-It then starts the real server, using the browser tests' stand-ins for ComfyUI, comfy-cli,
+It then starts the real server on `127.0.0.1:2399`, using the browser tests' stand-ins for ComfyUI, comfy-cli,
 danbooru-tagger, gpu-workload and nvidia-smi. Generated images show up in the gallery as
 they finish. The passphrase for hidden items is `ios dev passphrase`.
+
+The simulator connects to `http://localhost:2399`. For a real iPhone or iPad, put it behind
+Tailscale Serve once (the setting persists) and use the HTTPS address:
+
+```bash
+tailscale serve --bg --https=23399 http://127.0.0.1:2399
+# then https://<machine>.<tailnet>.ts.net:23399 in the app
+```
 
 Open `ios/WanderingGallery.xcodeproj` and run. The app also takes the server from the
 `WG_SERVER_URL` environment variable (the UI tests use it):

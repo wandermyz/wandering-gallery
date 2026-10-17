@@ -100,7 +100,7 @@ struct ServerEditor: View {
         Form {
             if firstRun {
                 Section {
-                    Text("Connect to your Wandering Gallery server, e.g. its Tailscale Serve address `https://my-pc.my-tailnet.ts.net:23334`. Its hostname must be in `server.allowedHosts`.")
+                    Text("Connect to your Wandering Gallery server over HTTPS, e.g. its Tailscale Serve address `https://my-pc.my-tailnet.ts.net:23334`. Its hostname must be in `server.allowedHosts`.")
                         .font(.callout)
                 }
             }
@@ -112,6 +112,9 @@ struct ServerEditor: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("server-url")
+                if !url.isEmpty, let problem = candidate.urlProblem {
+                    Text(problem).font(.footnote).foregroundStyle(.orange)
+                }
             }
             Section {
                 Button {

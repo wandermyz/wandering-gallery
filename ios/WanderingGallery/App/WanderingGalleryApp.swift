@@ -29,7 +29,8 @@ struct RootView: View {
                 .id(server)
         } else {
             NavigationStack {
-                ServerEditor(server: nil, firstRun: true)
+                // No server yet, or a saved one that's no longer allowed (plain HTTP): fix it.
+                ServerEditor(server: servers.current, firstRun: true)
             }
         }
     }

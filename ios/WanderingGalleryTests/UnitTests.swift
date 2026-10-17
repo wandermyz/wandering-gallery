@@ -128,6 +128,16 @@ private final class BundleToken {}
         #expect(Server(name: "x", url: "host.ts.net:23334").baseURL?.absoluteString == "https://host.ts.net:23334")
         #expect(Server(name: "x", url: "ftp://nope").baseURL == nil)
     }
+
+    @Test func plainHTTPOnlyForLoopback() {
+        #expect(Server(name: "x", url: "http://host.ts.net:2399").baseURL == nil)
+        #expect(Server(name: "x", url: "http://host.ts.net:2399").urlProblem?.contains("https://") == true)
+        #expect(Server(name: "x", url: "http://192.168.1.5:2399").baseURL == nil)
+        #expect(Server(name: "x", url: "http://localhost:2399").baseURL != nil)
+        #expect(Server(name: "x", url: "http://127.0.0.1:2399").baseURL != nil)
+        #expect(Server(name: "x", url: "https://host.ts.net:23399").urlProblem == nil)
+        #expect(Server(name: "x", url: "  ").urlProblem != nil)
+    }
 }
 
 @Suite struct DayGroupingTests {

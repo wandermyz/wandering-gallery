@@ -4,9 +4,8 @@
 <dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- The backend is user-picked: Tailscale Serve (HTTPS) or plain HTTP on the tailnet / LAN. -->
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
+		<!-- HTTPS everywhere; plain HTTP only to localhost (the simulator against a dev server).
+		     The app also refuses non-loopback http:// URLs itself (Server.parse). -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

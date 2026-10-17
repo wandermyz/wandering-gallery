@@ -7,11 +7,31 @@ struct Server: Codable, Hashable, Identifiable {
     var name: String
     var url: String
 
-    var baseURL: URL? {
-        var s = url.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The URL to use, or nil when `urlProblem` says why it can't be used.
+    var baseURL: URL? { Self.parse(url).url }
+
+    /// Why the URL can't be used (nil: it can).
+    var urlProblem: String? { Self.parse(url).problem }
+
+    /// HTTPS only (e.g. Tailscale Serve). Plain HTTP is allowed just for this device's own
+    /// loopback address, for the simulator against a local dev server. No scheme means https.
+    static func parse(_ text: String) -> (url: URL?, problem: String?) {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty { return (nil, "Enter the server's address.") }
         if !s.contains("://") { s = "https://" + s }
-        guard let u = URL(string: s), let scheme = u.scheme, ["http", "https"].contains(scheme.lowercased()), u.host != nil else { return nil }
-        return u
+        guard let u = URL(string: s), let scheme = u.scheme?.lowercased(), let host = u.host()?.lowercased(), !host.isEmpty else {
+            return (nil, "That isn't a valid address.")
+        }
+        switch scheme {
+        case "https":
+            return (u, nil)
+        case "http" where ["localhost", "127.0.0.1", "::1"].contains(host):
+            return (u, nil)
+        case "http":
+            return (nil, "Use https://. Put the server behind Tailscale Serve (or another HTTPS proxy); plain HTTP is only allowed for localhost.")
+        default:
+            return (nil, "Use an https:// address.")
+        }
     }
 }
 

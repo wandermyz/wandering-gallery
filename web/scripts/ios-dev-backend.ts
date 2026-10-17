@@ -6,8 +6,10 @@
 //   npm run build && npm run dev:ios            # keeps the data between runs
 //   npm run dev:ios -- --reset                  # starts over
 //
-// Listens on 0.0.0.0:2399 (the simulator uses http://localhost:2399, a phone on the
-// tailnet http://<machine>.<tailnet>.ts.net:2399). Passphrase for hidden items:
+// Listens on 127.0.0.1:2399 only. The simulator uses http://localhost:2399; a phone or iPad
+// goes through Tailscale Serve over HTTPS (set up once, it persists):
+//   tailscale serve --bg --https=23399 http://127.0.0.1:2399
+// then https://<machine>.<tailnet>.ts.net:23399. Passphrase for hidden items:
 // "ios dev passphrase". Everything in it is generated test data.
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -18,6 +20,8 @@ import { FFMPEG, FFPROBE, fixture, hasFfmpeg, makeAudio, makeJpeg, makePng, make
 import { hashPassphrase } from '../src/server/unlock.js';
 
 const PORT = Number(process.env.IOS_DEV_PORT ?? 2399);
+/** Tailscale Serve's HTTPS port in front of PORT. */
+const HTTPS_PORT = Number(process.env.IOS_DEV_HTTPS_PORT ?? 23399);
 const COMFY_PORT = PORT + 1;
 const PASSPHRASE = 'ios dev passphrase';
 const web = path.resolve(import.meta.dirname, '..');
@@ -154,7 +158,7 @@ async function writeConfig() {
   const ts = tailnetName();
   fs.writeFileSync(path.join(root, 'config.yaml'), `
 server:
-  host: 0.0.0.0
+  host: 127.0.0.1
   port: ${PORT}
   allowedHosts: [${[os.hostname().toLowerCase(), ...(ts ? [ts] : [])].map((h) => JSON.stringify(h)).join(', ')}]
 dataDir: ./data
@@ -261,10 +265,9 @@ async function seed() {
 // ---- Main -----------------------------------------------------------------------------
 
 const fresh = reset || !fs.existsSync(path.join(root, 'config.yaml'));
-if (fresh) {
-  await buildLibrary();
-  await writeConfig();
-}
+if (fresh) await buildLibrary();
+// Rewritten every start, so config changes here apply to existing data too.
+await writeConfig();
 const server = path.join(web, 'dist/server/main.js');
 if (!fs.existsSync(server)) {
   console.error('ios-dev: run `npm run build` first');
@@ -300,4 +303,4 @@ for (let i = 0; ; i++) {
 }
 if (fresh) await seed();
 const ts = tailnetName();
-console.log(`ios-dev: ready on http://localhost:${PORT}${ts ? ` and http://${ts}:${PORT}` : ''} (passphrase: "${PASSPHRASE}")`);
+console.log(`ios-dev: ready on http://localhost:${PORT}${ts ? ` and, through Tailscale Serve, https://${ts}:${HTTPS_PORT}` : ''} (passphrase: "${PASSPHRASE}")`);
