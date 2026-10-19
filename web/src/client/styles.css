@@ -322,6 +322,11 @@ video.media { width: 100%; height: 100%; background: #000; }
 .media-msg p { margin: 0; }
 .media-msg .btn { margin-top: 8px; }
 .media-hint { position: absolute; top: calc(var(--top-h) + var(--safe-t) + 12px); left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: rgba(0, 0, 0, .6); padding: 4px 10px; border-radius: 8px; }
+.viewer-changed {
+  position: absolute; top: calc(var(--top-h) + var(--safe-t) + 12px); left: 50%; transform: translateX(-50%); z-index: 3;
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+  background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+}
 .viewer-empty { margin: auto; text-align: center; color: var(--muted); }
 
 .viewer-top, .viewer-bottom {

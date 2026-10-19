@@ -91,6 +91,9 @@ nonisolated struct Asset: Codable, Hashable, Identifiable, Sendable, AssetRef {
         guard let width, let height, width > 0, height > 0 else { return nil }
         return Double(width) / Double(height)
     }
+
+    /// The file's content version: `v` without the suffix that marks a hidden item.
+    var contentVersion: Substring { v.hasSuffix("h") ? v.dropLast() : Substring(v) }
 }
 
 nonisolated struct Cover: Codable, Hashable, Sendable, AssetRef {

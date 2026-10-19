@@ -203,6 +203,41 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Vault"].waitForNonExistence(timeout: 10))
     }
 
+    // parity: VIEW-10
+    func testChangedFileKeepsZoomUntilReload() throws {
+        // A copy of a seeded image in the dev backend's library, made unique so it isn't
+        // taken for a move of the original.
+        let lib = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../web/.tmp/ios-dev/comfy-out")
+        let file = lib.appending(path: "changing-ui.png")
+        var data = try Data(contentsOf: lib.appending(path: "ComfyUI_00002_.png"))
+        data.append(Data(UUID().uuidString.utf8))
+        try data.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let search = app.searchFields["Filter by filename"]
+        XCTAssertTrue(search.waitForExistence(timeout: 15))
+        search.tap()
+        search.typeText("changing-ui")
+        let cell = app.descendants(matching: .any)["cell-changing-ui.png"]
+        XCTAssertTrue(cell.waitForExistence(timeout: 20))
+        cell.tap()
+        let image = app.images["viewer-image"]
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        let fitted = image.frame.width
+        image.doubleTap()
+        XCTAssertTrue(image.waitForWider(than: fitted * 1.5))
+
+        // The file changes on disk: the image stays zoomed, with a Reload button.
+        data.append(Data("more".utf8))
+        try data.write(to: file)
+        let reload = app.buttons["viewer-file-changed"]
+        XCTAssertTrue(reload.waitForExistence(timeout: 20))
+        XCTAssertGreaterThan(image.frame.width, fitted * 1.5)
+        shot("file-changed")
+        reload.tap()
+        XCTAssertTrue(reload.waitForNonExistence(timeout: 5))
+    }
+
     // parity: TAG-01, GAL-01
     func testTagsAndFolders() {
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -226,6 +261,11 @@ final class GalleryUITests: XCTestCase {
 extension XCUIElement {
     func waitForHittable(timeout: TimeInterval = 5) -> Bool {
         let exp = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: self)
+        return XCTWaiter.wait(for: [exp], timeout: timeout) == .completed
+    }
+
+    func waitForWider(than width: CGFloat, timeout: TimeInterval = 5) -> Bool {
+        let exp = XCTNSPredicateExpectation(predicate: NSPredicate { el, _ in (el as! XCUIElement).frame.width > width }, object: self)
         return XCTWaiter.wait(for: [exp], timeout: timeout) == .completed
     }
 
