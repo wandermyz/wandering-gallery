@@ -24,9 +24,19 @@ struct ViewerScreen: View {
     @State private var insets = EdgeInsets()
     /// The screen's height, for sliding the page out when swiped away.
     @State private var height: CGFloat = 1000
+    /// The open item as first shown. When its file changes on disk, its page keeps this
+    /// version (scroll position, zoom, playback) until Reload; other updates show at once.
+    @State private var shown: Asset?
 
     private var asset: Asset? { list.items.first { $0.id == currentID } }
     private var index: Int? { list.items.firstIndex { $0.id == currentID } }
+    private var fileChanged: Bool { asset.map { displayed($0) != $0 } ?? false }
+
+    /// What a page shows: the open item's pinned version while its file has changed.
+    private func displayed(_ a: Asset) -> Asset {
+        if let shown, shown.id == a.id, shown.contentVersion != a.contentVersion { return shown }
+        return a
+    }
 
     var body: some View {
         ZStack {
@@ -47,6 +57,19 @@ struct ViewerScreen: View {
             if chrome, dragY == 0, let asset {
                 controls(asset)
                     .transition(.opacity)
+            }
+            if fileChanged {
+                Button { shown = asset } label: {
+                    Label("File changed · Reload", systemImage: "arrow.clockwise")
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Theme.accent, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("viewer-file-changed")
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 56)
             }
             if let toast {
                 Text(toast)
@@ -85,6 +108,9 @@ struct ViewerScreen: View {
             zoomed = false
             // Load the next page before reaching the end.
             if let i = index, i >= list.items.count - 5 { Task { await list.loadMore() } }
+        }
+        .onChange(of: asset, initial: true) {
+            if let a = asset, shown?.id != a.id || shown?.contentVersion == a.contentVersion { shown = a }
         }
         .onChange(of: list.items) {
             // The current item left the list (trashed / hidden elsewhere): close if nothing's left.
@@ -125,7 +151,8 @@ struct ViewerScreen: View {
         .simultaneousGesture(zoomed || asset?.kind == .markdown ? nil : dismissDrag)
     }
 
-    @ViewBuilder private func page(_ a: Asset) -> some View {
+    @ViewBuilder private func page(_ live: Asset) -> some View {
+        let a = displayed(live)
         switch a.kind {
         case .image:
             // Fits between the bars with a little space (a tall image stays clear of the title),
@@ -140,6 +167,8 @@ struct ViewerScreen: View {
             PlayerPage(asset: a, active: a.id == currentID, controlsInsets: EdgeInsets(
                 top: insets.top + Self.barHeight + Self.controlsGap - Self.playerTopMargin, leading: insets.leading,
                 bottom: insets.bottom + Self.barHeight + Self.controlsGap - Self.playerBottomMargin, trailing: insets.trailing))
+            // A new player for a reloaded file.
+            .id(a.contentVersion)
 
         case .markdown:
             MarkdownDocumentView(asset: a, active: a.id == currentID) { target in open(target) }

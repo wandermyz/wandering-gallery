@@ -477,6 +477,55 @@ test('newly generated files appear without reloading', async ({ page }, info) =>
   await expect(page.locator(`.cell[aria-label="${name}"]`)).toHaveCount(0, { timeout: 15_000 });
 });
 
+// parity: VIEW-10
+test('a file that changes on disk while open keeps its scroll and zoom until reloaded', async ({ page }, info) => {
+  const folder = `changing_${info.project.name}`;
+  const dir = path.join(LIB, folder);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir);
+  const body = Array.from({ length: 120 }, (_, i) => `Paragraph ${i + 1} of a long document.`).join('\n\n');
+  const doc = path.join(dir, 'notes.md');
+  const img = path.join(dir, 'pic.png');
+  fs.writeFileSync(doc, `# First draft\n\n${body}\n`);
+  fs.copyFileSync(path.join(LIB, 'gen_00002_.png'), img);
+  fs.appendFileSync(img, Buffer.from(folder));
+  try {
+    await openGallery(page, `gallery?lib=lib&folder=${folder}`);
+    await page.locator('.cell[aria-label="notes.md"]').click();
+    const h1 = page.locator('.slide.active .md h1');
+    await expect(h1).toHaveText('First draft');
+    const scroller = page.locator('.slide.active .md-scroll');
+    await scroller.evaluate((el) => el.scrollTo(0, 1200));
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(1200);
+
+    fs.writeFileSync(doc, `# Second draft\n\n${body}\n`);
+    const pill = page.getByRole('button', { name: 'File changed · Reload' });
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    // Still the version being read, where it was being read.
+    await expect(h1).toHaveText('First draft');
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(1200);
+    await pill.click();
+    await expect(h1).toHaveText('Second draft');
+    await expect(pill).toHaveCount(0);
+
+    // A zoomed image stays zoomed.
+    await page.getByRole('button', { name: 'Back to gallery' }).click();
+    await page.locator('.cell[aria-label="pic.png"]').click();
+    await expect(page.locator('.slide.active img.media.full.shown')).toBeVisible();
+    const zoom = page.locator('.slide.active .zoom');
+    await page.keyboard.press('+');
+    await expect(zoom).toHaveAttribute('style', /scale/);
+    fs.appendFileSync(img, Buffer.from('more'));
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(zoom).toHaveAttribute('style', /scale/);
+    await pill.click();
+    await expect(pill).toHaveCount(0);
+    await expect(zoom).not.toHaveAttribute('style', /scale/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // parity: TRASH-01
 test('delete moves the file to trash and restore brings it back intact', async ({ page }, info) => {
   const target = { desktop: 'gen_00010_.png', iphone: 'gen_00011_.png', 'iphone-landscape': 'gen_00012_.png' }[info.project.name]!;

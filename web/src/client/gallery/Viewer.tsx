@@ -44,6 +44,15 @@ export function Viewer(props: ViewerProps) {
   const prev = index > 0 ? items[index - 1] : null;
   const next = index >= 0 && index < items.length - 1 ? items[index + 1] : null;
 
+  // When the open file changes on disk, its slide keeps the version first shown (scroll
+  // position, zoom and playback stay) until Reload; other updates (rating, tags) show at once.
+  const shownRef = useRef<Asset | null>(null);
+  const [, setReloads] = useState(0);
+  const pin = shownRef.current;
+  if (asset && (!pin || pin.id !== asset.id || contentOf(pin) === contentOf(asset))) shownRef.current = asset;
+  const shown = asset ? shownRef.current! : null;
+  const changed = !!asset && shown !== asset;
+
   const [chrome, setChrome] = useState(true);
   const [info, setInfo] = useState(() => localStorage.getItem('wg.info') === '1' && window.innerWidth >= 900);
   const [zoomed, setZoomed] = useState(false);
@@ -83,7 +92,7 @@ export function Viewer(props: ViewerProps) {
     const bw = img?.offsetWidth || w;
     const bh = img?.offsetHeight || h;
     const oy = img ? img.offsetTop + bh / 2 - h / 2 : 0;
-    const a = navRef.current.asset;
+    const a = shownRef.current;
     const nw = a?.width || img?.naturalWidth || w;
     const nh = a?.height || img?.naturalHeight || h;
     const fit = Math.min(bw / nw, bh / nh);
@@ -122,6 +131,12 @@ export function Viewer(props: ViewerProps) {
   };
 
   const resetZoom = (animate = false) => applyZoom({ s: 1, x: 0, y: 0 }, animate);
+
+  const reload = () => {
+    shownRef.current = navRef.current.asset;
+    resetZoom();
+    setReloads((n) => n + 1);
+  };
 
   // Reset zoom whenever the asset changes.
   useLayoutEffect(() => {
@@ -485,7 +500,7 @@ export function Viewer(props: ViewerProps) {
         <div class="stage" ref={stageRef}>
           <div class="track" ref={trackRef}>
             {prev && <Slide key={prev.id} asset={prev} pos={-1} active={false} />}
-            <Slide key={asset.id} asset={asset} pos={0} active zoomRef={(el) => (zoomElRef.current = el)} onOpenAsset={props.onOpenAsset} />
+            <Slide key={asset.id} asset={shown!} pos={0} active zoomRef={(el) => (zoomElRef.current = el)} onOpenAsset={props.onOpenAsset} />
             {next && <Slide key={next.id} asset={next} pos={1} active={false} />}
           </div>
         </div>
@@ -515,6 +530,12 @@ export function Viewer(props: ViewerProps) {
           )}
           <span class="viewer-count">{index + 1}{props.hasMore ? '' : ` / ${items.length}`}</span>
         </header>
+
+        {changed && (
+          <button type="button" class="viewer-changed" onClick={reload}>
+            <Icon name="refresh" size={16} /> File changed · Reload
+          </button>
+        )}
 
         {prev && <button type="button" class="nav-arrow left" aria-label="Previous" onClick={() => go(-1)}><Icon name="back" size={28} /></button>}
         {next && <button type="button" class="nav-arrow right" aria-label="Next" onClick={() => go(1)}><Icon name="next" size={28} /></button>}
@@ -553,6 +574,9 @@ export function Viewer(props: ViewerProps) {
     </div>
   );
 }
+
+/** The file's content version: `v` without the suffix that marks a hidden item. */
+const contentOf = (a: Asset) => a.v.replace(/h$/, '');
 
 function Slide({ asset: a, pos, active, zoomRef, onOpenAsset }: {
   asset: Asset; pos: number; active: boolean; zoomRef?: (el: HTMLDivElement | null) => void; onOpenAsset?: (id: number) => void;
