@@ -81,7 +81,7 @@ picked up without editing the project.
 ### Markdown renderer
 
 Documents are rendered by the web client's own code (`web/src/client/gallery/markdown.ts`,
-with Mermaid) in a `WKWebView`. The code is bundled into
+with Pele drawing the Mermaid diagrams) in a `WKWebView`. The code is bundled into
 `WanderingGallery/Resources/Markdown/markdown.js`, which is checked in so Xcode builds
 don't need Node. After changing the web's Markdown code or styles, rebuild the bundle:
 

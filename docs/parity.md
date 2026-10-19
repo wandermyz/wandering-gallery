@@ -74,7 +74,7 @@ never reused.
 | HID-01 | Hidden items and libraries leave every list until unlocked with the passphrase; lock again | ✅ | ✅ | |
 | TRASH-01 | Move to trash and restore, with favorite and rating intact | ✅ | ✅ | |
 | TRASH-02 | Delete permanently, delete all | untested | untested | |
-| MD-01 | Markdown documents render with embedded images, videos and Mermaid diagrams | ✅ | untested | |
+| MD-01 | Markdown documents render with embedded images, videos and Mermaid diagrams | ✅ | untested | Diagrams drawn by Pele, in the app's colors |
 | MD-02 | Mermaid diagrams open in a zoomable full-screen view | untested | untested | |
 | MD-03 | Videos in a document autoplay with sound when scrolled into view | n/a | untested | iOS only; checked in a browser against the bundled renderer |
 

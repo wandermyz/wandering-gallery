@@ -64,7 +64,9 @@ export function DiagramZoom({ svg, onClose }: { svg: SVGSVGElement; onClose: () 
     const w = vb && vb.width ? vb.width : r.width || 300;
     const h = vb && vb.height ? vb.height : r.height || 150;
     size.current = { w, h };
-    copy.removeAttribute('style');
+    // Its own size, not the document's; the style also holds the diagram's colors and fonts.
+    copy.style.removeProperty('max-width');
+    copy.style.removeProperty('height');
     copy.setAttribute('width', String(w));
     copy.setAttribute('height', String(h));
     el.replaceChildren(copy);

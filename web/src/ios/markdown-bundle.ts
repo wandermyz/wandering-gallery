@@ -9,7 +9,7 @@ import styles from '../client/styles.css?inline';
  * The page is loaded with the server as its base URL, so the gallery's relative media
  * URLs resolve. Taps are reported to the app through the `wg` message handler:
  * `{type: 'asset', id}` (a link to an asset or an embedded image), `{type: 'link', href}`
- * (any other link) and `{type: 'diagram', svg}` (a Mermaid diagram, to zoom into).
+ * (any other link) and `{type: 'diagram', svg}` (a diagram, to zoom into).
  *
  * Videos play with sound when they scroll into view while the page is the viewer's current
  * one (`wgSetActive`), and pause when they leave it. A video the user paused stays paused
