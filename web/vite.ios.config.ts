@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 
 /**
  * The iOS app's Markdown renderer (src/ios/markdown-bundle.ts): one self-contained script,
- * Mermaid included, checked in to the app's resources so Xcode builds don't need Node.
+ * Pele (the diagram renderer) included, checked in to the app's resources so Xcode builds don't need Node.
  */
 export default defineConfig({
   publicDir: false,

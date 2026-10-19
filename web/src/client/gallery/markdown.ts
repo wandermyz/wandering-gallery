@@ -10,7 +10,7 @@ import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
  * resolves to (null: a local file that is missing, or hidden while locked). Those
  * become the gallery's own media URLs, so hiding rules apply to embedded media
  * too; an image reference that points to a video or audio file becomes a player.
- * ```mermaid code blocks are drawn as diagrams afterwards, by renderDiagrams.
+ * ```mermaid code blocks are drawn as diagrams afterwards, by renderDiagrams (with Pele).
  */
 
 /** Same pattern as the server's HTML_URL_ATTR, which collected the refs. */
@@ -111,38 +111,48 @@ function sanitize(html: string): string {
   });
 }
 
-type Mermaid = typeof import('mermaid')['default'];
-let mermaid: Promise<Mermaid> | null = null;
-let diagramSeq = 0;
+type Pele = typeof import('pele/lazy');
+let pele: Promise<Pele> | null = null;
 
 /**
- * Draws the Mermaid diagrams in a rendered document, in place. Mermaid is large, so it
- * is loaded only for documents that have diagrams. In strict mode it sanitizes labels
- * and allows no scripts or click handlers. A diagram that fails to parse stays as source.
+ * The diagrams' colors, matching the app's dark theme. Set on each diagram's own <svg>,
+ * so a copy of it (the full-screen view, the iOS app's zoom view) keeps them.
+ */
+const DIAGRAM_THEME: Record<string, string> = {
+  '--pele-bg': '#0b0b0d',
+  '--pele-fg': '#ececf1',
+  '--pele-muted': '#9a9aa6',
+  '--pele-line': '#b4b4c0',
+  '--pele-surface': '#1d1d23',
+  '--pele-surface-alt': '#141418',
+  '--pele-border': '#4a4a56',
+  '--pele-accent': '#8b7cf6',
+  '--pele-critical': '#ff6b81',
+};
+
+/**
+ * Draws the Mermaid diagrams in a rendered document, in place, with Pele. It is loaded
+ * only for documents that have diagrams, and each diagram type's code only when one is
+ * drawn. Pele escapes labels and filters links and styles; it runs no scripts. A diagram
+ * that cannot be drawn stays as source.
  */
 export async function renderDiagrams(root: HTMLElement, alive: () => boolean): Promise<void> {
   const blocks = [...root.querySelectorAll<HTMLElement>('pre.md-mermaid')];
   if (!blocks.length) return;
-  mermaid ??= import('mermaid').then(({ default: m }) => {
-    m.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      suppressErrorRendering: true,
-      theme: 'dark',
-      fontFamily: getComputedStyle(document.body).fontFamily,
-    });
-    return m;
-  });
-  const m = await mermaid;
-  // One at a time: Mermaid keeps global state while it lays a diagram out.
+  pele ??= import('pele/lazy');
+  const { renderAsync } = await pele;
+  const fontFamily = getComputedStyle(root).fontFamily;
   for (const pre of blocks) {
     if (!alive() || !pre.isConnected) return;
     try {
-      const { svg } = await m.render(`md-mermaid-${++diagramSeq}`, pre.textContent ?? '');
+      // Laid out for the column's width: a wide flowchart turns vertical on a phone.
+      const { svg } = await renderAsync(pre.textContent ?? '', { fontFamily, maxWidth: root.clientWidth || undefined });
       if (!alive() || !pre.isConnected) return;
       const fig = document.createElement('div');
       fig.className = 'md-diagram';
       fig.innerHTML = svg;
+      const el = fig.querySelector('svg');
+      for (const [k, v] of Object.entries(DIAGRAM_THEME)) el?.style.setProperty(k, v);
       pre.replaceWith(fig);
     } catch (e) {
       pre.classList.add('md-mermaid-error');

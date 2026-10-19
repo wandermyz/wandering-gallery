@@ -563,14 +563,17 @@ test('Markdown documents render with their embedded images and videos, and can b
   await video.scrollIntoViewIfNeeded();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
 
-  // Mermaid blocks are drawn as diagrams; one that does not parse stays as source.
-  await expect(doc.locator('.md-diagram svg')).toHaveCount(1);
+  // Mermaid blocks are drawn as diagrams (by Pele, in the app's colors); one that does not
+  // parse stays as source.
+  await expect(doc.locator('.md-diagram svg.pele')).toHaveCount(1);
   await expect(doc.locator('.md-diagram svg')).toContainText('Dusk');
   await expect(doc.locator('pre.md-mermaid-error')).toHaveText('not a diagram');
   // Tapping a diagram opens it full screen, where it zooms in and out.
   await doc.locator('.md-diagram').click();
   const zoomed = page.getByRole('dialog', { name: 'Diagram' });
   await expect(zoomed.locator('.diagram-zoom-content svg')).toContainText('Dusk');
+  // The copy keeps its colors.
+  expect(await zoomed.locator('.diagram-zoom-content svg').evaluate((el) => getComputedStyle(el).getPropertyValue('--_bg'))).toBe('#0b0b0d');
   const width = () => zoomed.locator('.diagram-zoom-content svg').evaluate((el) => el.getBoundingClientRect().width);
   const fitted = await width();
   await zoomed.getByRole('button', { name: 'Zoom in' }).click();

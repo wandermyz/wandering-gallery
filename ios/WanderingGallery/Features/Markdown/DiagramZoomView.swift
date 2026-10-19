@@ -60,7 +60,9 @@ private struct DiagramWebView: UIViewRepresentable {
         const s = document.querySelector('svg');
         const vb = s.viewBox.baseVal, r = s.getBoundingClientRect();
         const w = vb && vb.width ? vb.width : r.width || 300, h = vb && vb.height ? vb.height : r.height || 150;
-        s.removeAttribute('style');
+        // Its own size, not the document's; the style also holds the diagram's colors and fonts.
+        s.style.removeProperty('max-width');
+        s.style.removeProperty('height');
         // Fits the layout viewport (unchanged by zooming), so rotating refits.
         const fit = () => {
           const e = document.documentElement, k = Math.min(e.clientWidth * 0.94 / w, e.clientHeight * 0.94 / h);
