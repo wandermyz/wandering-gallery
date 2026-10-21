@@ -622,7 +622,7 @@ test('Markdown documents render with their embedded images and videos, and can b
   const zoomed = page.getByRole('dialog', { name: 'Diagram' });
   await expect(zoomed.locator('.diagram-zoom-content svg')).toContainText('Dusk');
   // The copy keeps its colors.
-  expect(await zoomed.locator('.diagram-zoom-content svg').evaluate((el) => getComputedStyle(el).getPropertyValue('--_bg'))).toBe('#0b0b0d');
+  expect(await zoomed.locator('.diagram-zoom-content svg').evaluate((el) => getComputedStyle(el).getPropertyValue('--_bg'))).toBe('#050707');
   const width = () => zoomed.locator('.diagram-zoom-content svg').evaluate((el) => el.getBoundingClientRect().width);
   const fitted = await width();
   await zoomed.getByRole('button', { name: 'Zoom in' }).click();

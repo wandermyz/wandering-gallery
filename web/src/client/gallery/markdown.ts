@@ -119,15 +119,15 @@ let pele: Promise<Pele> | null = null;
  * so a copy of it (the full-screen view, the iOS app's zoom view) keeps them.
  */
 const DIAGRAM_THEME: Record<string, string> = {
-  '--pele-bg': '#0b0b0d',
-  '--pele-fg': '#ececf1',
-  '--pele-muted': '#9a9aa6',
-  '--pele-line': '#b4b4c0',
-  '--pele-surface': '#1d1d23',
-  '--pele-surface-alt': '#141418',
-  '--pele-border': '#4a4a56',
-  '--pele-accent': '#8b7cf6',
-  '--pele-critical': '#ff6b81',
+  '--pele-bg': '#050707',
+  '--pele-fg': '#f5f8f8',
+  '--pele-muted': '#a8b1b0',
+  '--pele-line': '#b4bfbe',
+  '--pele-surface': '#151a1a',
+  '--pele-surface-alt': '#0d1111',
+  '--pele-border': '#3e4a49',
+  '--pele-accent': '#39d8c7',
+  '--pele-critical': '#ff6685',
 };
 
 /**
