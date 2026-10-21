@@ -472,6 +472,25 @@ describe('generate API', () => {
     expect(comfy.submitted.at(-1)!.graph['16'].inputs.image).toBe(comfy.uploads[0].name);
   });
 
+  it('cancels everything in the queue: queued jobs first, then the running one', async () => {
+    await setup();
+    const run = (await post('/api/generate/flows/wai-illustrious-tags/runs', { prompt: 'a', variations: ['t'], batch: 2 })).json();
+    await tick();
+    const job = { createdAtMs: 1, startedAtMs: null, endedAtMs: null, error: null, clientId: null, title: null, model: null, output: null };
+    comfy.queued = {
+      running: [{ ...job, id: 'p1', status: 'running' }],
+      pending: [{ ...job, id: 'p2', status: 'pending' }, { ...job, id: 'other', status: 'pending', clientId: 'someone' }],
+      recent: [],
+    };
+    expect((await post('/api/dashboard/jobs/cancel-all')).json()).toEqual({ ok: true, cancelled: 3 });
+    expect(comfy.cancelled).toEqual(['p2', 'other', 'p1']);
+    const r = (await app.inject({ url: `/api/generate/runs/${run.id}` })).json();
+    expect(r.jobs.map((j: { status: string }) => j.status)).toEqual(['cancelled', 'cancelled']);
+
+    comfy.online = false;
+    expect((await post('/api/dashboard/jobs/cancel-all')).statusCode).toBe(503);
+  });
+
   it('shows the dashboard: queue, own-job progress, visible previews, GPU', async () => {
     await setup();
     await makePng(path.join(env.lib('comfyui'), 'done_00001_.png'));

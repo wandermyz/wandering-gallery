@@ -21,6 +21,7 @@ export default function DashboardApp() {
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   /** Jobs with a cancel request in flight. */
   const [cancelling, setCancelling] = useState<ReadonlySet<string>>(new Set());
+  const [cancellingAll, setCancellingAll] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +93,27 @@ export default function DashboardApp() {
     }
   };
 
+  const cancelAll = async () => {
+    const n = (c?.running.length ?? 0) + (c?.pending.length ?? 0);
+    const ok = await ask({
+      title: `Cancel all ${n} jobs?`,
+      message: <p class="muted">Everything in ComfyUI's queue is removed and the running job is stopped, also jobs not queued from this app.</p>,
+      confirm: 'Cancel all',
+      danger: true,
+    });
+    if (!ok) return;
+    setCancellingAll(true);
+    try {
+      const r = await dashApi.cancelAll();
+      toast(r.cancelled === 1 ? 'Cancelled 1 job' : `Cancelled ${r.cancelled} jobs`);
+      await load();
+    } catch (e) {
+      toast(`Cancel failed: ${(e as Error).message}`, { kind: 'error' });
+    } finally {
+      setCancellingAll(false);
+    }
+  };
+
   const c = data?.comfy;
   const sub = !data ? undefined
     : !c!.online ? 'ComfyUI offline'
@@ -114,7 +136,8 @@ export default function DashboardApp() {
             <GpuCard gpu={data.gpu} />
             {data.workload && <WorkloadCard workload={data.workload} />}
           </div>
-          <ComfyCard comfy={data.comfy} now={now} cancelling={cancelling} onCancel={(j) => void cancel(j)} />
+          <ComfyCard comfy={data.comfy} now={now} cancelling={cancelling} onCancel={(j) => void cancel(j)}
+            cancellingAll={cancellingAll} onCancelAll={() => void cancelAll()} />
         </div>
       )}
       <ConfirmDialog opts={confirm?.opts ?? null} onResult={(ok) => { confirm?.resolve(ok); setConfirm(null); }} />
@@ -125,7 +148,10 @@ export default function DashboardApp() {
 
 // ---- ComfyUI -------------------------------------------------------------------
 
-function ComfyCard({ comfy, now, cancelling, onCancel }: { comfy: Dashboard['comfy']; now: number; cancelling: ReadonlySet<string>; onCancel: (j: DashJob) => void }) {
+function ComfyCard({ comfy, now, cancelling, onCancel, cancellingAll, onCancelAll }: {
+  comfy: Dashboard['comfy']; now: number; cancelling: ReadonlySet<string>; onCancel: (j: DashJob) => void; cancellingAll: boolean; onCancelAll: () => void;
+}) {
+  const open = comfy.running.length + comfy.pending.length;
   return (
     <section class="gen-card dash-card dash-comfy" aria-labelledby="dash-comfy-h">
       <div class="dash-head">
@@ -133,6 +159,11 @@ function ComfyCard({ comfy, now, cancelling, onCancel }: { comfy: Dashboard['com
         {comfy.online
           ? <span class={cx('cap-pill', comfy.running.length ? 'run-running' : 'run-completed')}>{comfy.running.length ? 'Running' : 'Idle'}</span>
           : <span class="cap-pill run-error">Offline</span>}
+        {comfy.online && open > 1 && (
+          <button type="button" class="btn btn-sm dash-cancel dash-cancel-all" disabled={cancellingAll} onClick={onCancelAll}>
+            {cancellingAll ? 'Cancelling…' : `Cancel all ${open}`}
+          </button>
+        )}
       </div>
       {!comfy.online && <p class="dash-err"><Icon name="alert" size={16} /><span class="break">{comfy.error}</span></p>}
       {comfy.online && (

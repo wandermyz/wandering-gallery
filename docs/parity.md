@@ -103,3 +103,4 @@ never reused.
 | DASH-03 | Cancel queued and running jobs | ✅ | ✅ | |
 | DASH-04 | Rejects a job id that isn't one | ✅ | n/a | Server behavior |
 | DASH-05 | Says the GPU is free (vhotseat mode `none`) when nothing holds it | ✅ | ✅ | |
+| DASH-06 | Cancel every queued and running job at once (Cancel all) | ✅ | pending | iOS in progress |

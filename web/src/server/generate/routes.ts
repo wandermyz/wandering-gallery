@@ -163,6 +163,11 @@ export function registerGenerate(app: FastifyInstance, cfg: AppConfig, db: Db, i
     };
   });
 
+  // Everything in ComfyUI's queue, whoever queued it.
+  app.post('/api/dashboard/jobs/cancel-all', async () => {
+    return { ok: true, cancelled: await runs.cancelAll() };
+  });
+
   // Any running or queued job, also ones queued from ComfyUI itself or other clients.
   app.post('/api/dashboard/jobs/:id/cancel', async (req) => {
     const id = (req.params as { id: string }).id;
