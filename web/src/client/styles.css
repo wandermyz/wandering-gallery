@@ -146,6 +146,28 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .9em; 
 .cell.loaded img { opacity: 1; }
 .cell:active img { filter: brightness(.8); }
 @media (hover: hover) { .cell:hover img { filter: brightness(1.08); } }
+.cell img { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.cell.selecting img { transition: opacity .25s ease, transform .15s ease; }
+.cell.selected img { transform: scale(.9); border-radius: 6px; }
+.cell.selected { background: rgba(139, 124, 246, .28); }
+.cell-check {
+  position: absolute; right: 6px; bottom: 6px; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; color: #fff;
+  background: rgba(0, 0, 0, .3); box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
+.cell.selected .cell-check { background: var(--accent); border-color: var(--accent); }
+
+/* Multi-select: the actions for the selected items, along the bottom. */
+.select-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; justify-content: center; gap: 10px;
+  padding: 10px calc(12px + var(--safe-r)) calc(10px + var(--safe-b)) calc(12px + var(--safe-l));
+  background: rgba(20, 20, 24, .92); border-top: 1px solid var(--line);
+  -webkit-backdrop-filter: saturate(160%) blur(18px); backdrop-filter: saturate(160%) blur(18px);
+}
+.select-bar .btn { flex: 1; max-width: 220px; gap: 8px; }
+html.selecting .content { padding-bottom: calc(96px + var(--safe-b)); }
+html.selecting .toasts { bottom: calc(80px + var(--safe-b)); }
 .cell-broken {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; padding: 8px; color: var(--muted); font-size: 11px; text-align: center; word-break: break-all;

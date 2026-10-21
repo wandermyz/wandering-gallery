@@ -73,6 +73,13 @@ const captioned = ((await get('/api/assets?library=refs&caption=any&limit=1')) a
 captured.caption = await get(`/api/assets/${captioned.id}/caption`);
 const doc = all.find((a) => a.name === 'the-harbor.md')!;
 captured.markdown = await get(`/api/assets/${doc.id}/markdown`);
+// Multi-select: a missing id makes each response list a failure too.
+const comfyImages = page.items.filter((a) => a.kind === 'image');
+const missing = 999_999_999;
+captured['batch-hidden'] = await call('POST', '/api/batch/hidden', { ids: [comfyImages[0].id, missing], hidden: false });
+const victim = (await get(`/api/assets/${comfyImages[0].id}`)) as A & { size: number; mtimeMs: number };
+captured['batch-trash'] = await call('POST', '/api/batch/trash', { items: [{ id: victim.id, size: victim.size, mtimeMs: victim.mtimeMs }, { id: missing }] });
+captured['batch-restore'] = await call('POST', '/api/batch/restore', { ids: [victim.id, missing] });
 
 captured.flows = await get('/api/generate/flows');
 captured['comfy-status'] = await get('/api/generate/status');

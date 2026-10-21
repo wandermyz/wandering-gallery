@@ -44,6 +44,7 @@ never reused.
 | GAL-06 | Browsing and organising never change the original files | ✅ | n/a | Server behavior |
 | GAL-07 | Filter sheet: type, favorites, minimum rating, caption status, order, subfolders, thumbnail size | untested | untested | |
 | GAL-08 | Rescan a library or all libraries | untested | untested | |
+| GAL-09 | Multi-select (long press or Select): hide/unhide or move to trash in one go, with Undo | ✅ | ✅ | |
 
 ## Viewer
 

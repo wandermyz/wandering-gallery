@@ -578,6 +578,76 @@ test('read-only libraries cannot delete', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Library is read-only' })).toBeDisabled();
 });
 
+// parity: GAL-09
+test('multi-select hides and moves several items to trash at once', async ({ page }, info) => {
+  const names = ['b1.png', 'b2.png', 'b3.png'];
+  const files = names.map((n) => path.join(LIB, 'batch', n));
+  const hashes = files.map(sha);
+  const cell = (n: string) => page.locator(`.cell[aria-label="${n}"]`);
+  await openGallery(page, '?lib=lib&folder=batch');
+  await expect(page.locator('.cell')).toHaveCount(3);
+
+  // A long press starts selecting; taps then toggle instead of opening the viewer.
+  if (isMobile(info.project.name)) {
+    const box = (await cell('b1.png').boundingBox())!;
+    const p = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await touch(page, Array.from({ length: 50 }, () => [p]));
+  } else {
+    await cell('b1.png').click({ delay: 800 });
+  }
+  await expect(page.locator('.topbar h1')).toHaveText('1 item selected');
+  await expect(page.locator('.viewer')).toHaveCount(0);
+  await cell('b2.png').click();
+  await cell('b1.png').click();
+  await cell('b1.png').click();
+  await expect(page.locator('.topbar h1')).toHaveText('2 items selected');
+  await expect(cell('b1.png')).toHaveAttribute('aria-pressed', 'true');
+  await expect(cell('b3.png')).toHaveAttribute('aria-pressed', 'false');
+
+  // Hidden while locked: both leave the grid.
+  await page.getByRole('toolbar', { name: 'Selected items' }).getByRole('button', { name: 'Hide' }).click();
+  await expect(page.locator('.toast', { hasText: 'Hid 2 items' })).toBeVisible();
+  await expect(page.locator('.cell')).toHaveCount(1);
+  await expect(page.locator('.topbar h1')).not.toContainText('selected');
+
+  // Unlocked, they come back and can be unhidden together.
+  await page.getByRole('button', { name: 'Show hidden items' }).click();
+  await page.getByLabel('Passphrase').fill('e2e passphrase');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.locator('.cell')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Select items' }).click();
+  await expect(page.locator('.topbar h1')).toHaveText('Select items');
+  await cell('b1.png').click();
+  await cell('b2.png').click();
+  await page.getByRole('toolbar', { name: 'Selected items' }).getByRole('button', { name: 'Unhide' }).click();
+  await expect(page.locator('.toast', { hasText: 'Unhid 2 items' })).toBeVisible();
+  await expect(page.locator('.badge-hidden')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Hidden items are shown' }).click();
+  await page.getByRole('button', { name: 'Lock now' }).click();
+  await expect(page.locator('.cell')).toHaveCount(3);
+
+  // Select all, then move to trash after confirming; Undo restores them all.
+  await page.getByRole('button', { name: 'Select items' }).click();
+  await page.getByRole('button', { name: 'Select all' }).click();
+  await expect(page.locator('.topbar h1')).toHaveText('3 items selected');
+  await page.getByRole('toolbar', { name: 'Selected items' }).getByRole('button', { name: 'Move to trash' }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('Move 3 items to trash?');
+  await dialog.getByRole('button', { name: 'Move to trash' }).click();
+  await expect(page.locator('.toast', { hasText: 'Moved 3 items to trash' })).toBeVisible();
+  await expect(page.locator('.cell')).toHaveCount(0);
+  for (const f of files) expect(fs.existsSync(f)).toBe(false);
+  await page.locator('.toast', { hasText: 'Moved 3 items to trash' }).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.locator('.toast', { hasText: 'Restored 3 items' })).toBeVisible();
+  await expect(page.locator('.cell')).toHaveCount(3);
+  expect(files.map(sha)).toEqual(hashes);
+
+  // Escape leaves selecting.
+  await page.getByRole('button', { name: 'Select items' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('toolbar', { name: 'Selected items' })).toHaveCount(0);
+});
+
 // parity: GAL-06
 test('originals are unchanged by browsing and organising', async () => {
   // gen_00001_ was opened, zoomed and had metadata read in every project.

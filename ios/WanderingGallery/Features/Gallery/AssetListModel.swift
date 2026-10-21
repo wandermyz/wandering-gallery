@@ -101,6 +101,13 @@ final class AssetListModel {
         if let i = items.firstIndex(where: { $0.id == a.id }) { items[i] = a }
     }
 
+    func remove(_ ids: [Int]) {
+        let gone = Set(ids)
+        let before = items.count
+        items.removeAll { gone.contains($0.id) }
+        if let t = total { total = max(0, t - (before - items.count)) }
+    }
+
     func remove(_ id: Int) {
         items.removeAll { $0.id == id }
         if let t = total { total = max(0, t - 1) }

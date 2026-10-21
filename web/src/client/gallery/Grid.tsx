@@ -22,7 +22,7 @@ function dayKey(ms: number) {
  * Virtualised, window-scrolled thumbnail grid with optional day headers. Only
  * rows near the viewport are rendered, so tens of thousands of items stay smooth.
  */
-export function Grid({ items, density, groupByDay, hasMore, onNeedMore, onOpen, focusId }: {
+export function Grid({ items, density, groupByDay, hasMore, onNeedMore, onOpen, focusId, selected, onSelect }: {
   items: Asset[];
   density: Density;
   groupByDay: boolean;
@@ -31,6 +31,10 @@ export function Grid({ items, density, groupByDay, hasMore, onNeedMore, onOpen, 
   onOpen: (index: number) => void;
   /** When set, scroll so this asset is visible (used when returning from the viewer). */
   focusId: number | null;
+  /** The selected asset ids while selecting (a tap toggles instead of opening), else null. */
+  selected: Set<number> | null;
+  /** Toggles an item: a tap while selecting, or a long press (which starts selecting). `range`: shift-click. */
+  onSelect: (index: number, range: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -145,7 +149,14 @@ export function Grid({ items, density, groupByDay, hasMore, onNeedMore, onOpen, 
         ) : (
           <div key={row.key} class="grid-row" style={{ transform: `translateY(${row.top}px)`, height: `${cell}px`, gap: `${GAP}px` }}>
             {items.slice(row.start, row.end).map((a, j) => (
-              <Cell key={a.id} asset={a} size={cell} onOpen={() => onOpen(row.start + j)} />
+              <Cell
+                key={a.id}
+                asset={a}
+                size={cell}
+                selected={selected ? selected.has(a.id) : null}
+                onOpen={(range) => (selected ? onSelect(row.start + j, range) : onOpen(row.start + j))}
+                onLongPress={() => onSelect(row.start + j, false)}
+              />
             ))}
           </div>
         ),
@@ -154,15 +165,62 @@ export function Grid({ items, density, groupByDay, hasMore, onNeedMore, onOpen, 
   );
 }
 
-function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: () => void }) {
+const LONG_PRESS_MS = 500;
+
+function Cell({ asset: a, size, selected, onOpen, onLongPress }: {
+  asset: Asset;
+  size: number;
+  /** Null when not selecting. */
+  selected: boolean | null;
+  onOpen: (range: boolean) => void;
+  onLongPress: () => void;
+}) {
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
+  // A long press selects the item; the click that ends it must not toggle it again.
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+  const cancelPress = () => {
+    if (press.current) clearTimeout(press.current.timer);
+    press.current = null;
+  };
   return (
     <button
       type="button"
-      class={cx('cell', state === 'ok' && 'loaded')}
+      class={cx('cell', state === 'ok' && 'loaded', selected !== null && 'selecting', selected && 'selected')}
       style={{ width: `${size}px`, height: `${size}px` }}
-      onClick={onOpen}
+      onClick={(e) => {
+        if (longPressed.current) {
+          longPressed.current = false;
+          return;
+        }
+        onOpen(e.shiftKey);
+      }}
+      onPointerDown={(e) => {
+        longPressed.current = false;
+        if (e.button !== 0 || selected !== null) return;
+        cancelPress();
+        press.current = {
+          x: e.clientX, y: e.clientY,
+          timer: setTimeout(() => {
+            press.current = null;
+            longPressed.current = true;
+            navigator.vibrate?.(10);
+            onLongPress();
+          }, LONG_PRESS_MS),
+        };
+      }}
+      onPointerMove={(e) => {
+        if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 10) cancelPress();
+      }}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerLeave={cancelPress}
+      onContextMenu={(e) => {
+        // Touch browsers open a context menu on a long press; the press selects instead.
+        if (press.current || longPressed.current) e.preventDefault();
+      }}
       aria-label={a.name}
+      aria-pressed={selected ?? undefined}
       data-id={a.id}
     >
       {state !== 'error' ? (
@@ -212,6 +270,11 @@ function Cell({ asset: a, size, onOpen }: { asset: Asset; size: number; onOpen: 
       )}
       {a.caption && (
         <span class={cx('badge-cap', `cap-${a.caption}`, a.captionCandidate && 'cand')} title={`Caption: ${CAPTION_LABELS[a.caption] ?? a.caption}${a.captionCandidate ? ' (candidate available)' : ''}`} />
+      )}
+      {selected !== null && (
+        <span class="cell-check" aria-hidden="true">
+          {selected && <Icon name="check" size={14} />}
+        </span>
       )}
     </button>
   );

@@ -155,6 +155,10 @@ export interface Query {
   order?: 'asc' | 'desc';
 }
 
+export interface BatchResult {
+  failed: { id: number; error: string }[];
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -265,6 +269,11 @@ export const api = {
   restore: (id: number) => request<Asset>('POST', `/api/trash/${id}/restore`),
   purge: (id: number) => request<{ ok: true }>('POST', `/api/trash/${id}/purge`),
   purgeAll: () => request<{ deleted: number; failed: number; error: string | null }>('POST', '/api/trash/purge-all'),
+  /** Multi-select actions: each item succeeds or fails on its own. */
+  hideMany: (ids: number[], hidden: boolean) => request<BatchResult & { items: Asset[] }>('POST', '/api/batch/hidden', { ids, hidden }),
+  trashMany: (items: Asset[]) =>
+    request<BatchResult & { trashed: number[] }>('POST', '/api/batch/trash', { items: items.map((a) => ({ id: a.id, size: a.size, mtimeMs: a.mtimeMs })) }),
+  restoreMany: (ids: number[]) => request<BatchResult & { restored: number[] }>('POST', '/api/batch/restore', { ids }),
   rescan: (library?: string) => request<{ ok: true }>('POST', '/api/rescan', library ? { library } : {}),
 };
 
