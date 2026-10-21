@@ -83,6 +83,45 @@ final class DashboardUITests: XCTestCase {
         shot(app, "dashboard-recent")
     }
 
+    // parity: DASH-06
+    @MainActor
+    func testCancelAll() throws {
+        let queued = expectation(description: "jobs queued")
+        Task.detached {
+            do { try await Self.queueJobs(batch: 8) } catch { XCTFail("queueing jobs: \(error)") }
+            queued.fulfill()
+        }
+        wait(for: [queued], timeout: 15)
+
+        let app = XCUIApplication()
+        app.launchEnvironment["WG_SERVER_URL"] = Self.server
+        app.launch()
+        let tab = app.tabBars.buttons["Dashboard"].exists ? app.tabBars.buttons["Dashboard"] : app.buttons["Dashboard"]
+        XCTAssertTrue(tab.firstMatch.waitForExistence(timeout: 15))
+        tab.firstMatch.tap()
+
+        let all = app.buttons["jobs-cancel-all"].firstMatch
+        XCTAssertTrue(all.waitForExistence(timeout: 15), "Cancel all shows with several jobs")
+        XCTAssertTrue(all.label.hasPrefix("Cancel all "))
+
+        // Keep leaves the queue alone.
+        all.tap()
+        XCTAssertTrue(app.alerts.buttons["Keep"].firstMatch.waitForExistence(timeout: 5))
+        app.alerts.buttons["Keep"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "dash-pending-job").firstMatch.exists)
+
+        all.tap()
+        let confirm = app.alerts.buttons["Cancel all"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        shot(app, "dashboard-cancel-all-confirm")
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Cancelled '")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["The queue is empty."].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Nothing running."].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(all.exists)
+        shot(app, "dashboard-cancelled-all")
+    }
+
     /// The dev backend's fake vhotseat reports the mode written to `web/.tmp/fake-vhotseat-mode`.
     private static func gpuMode(_ mode: String) throws {
         let web = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../web")

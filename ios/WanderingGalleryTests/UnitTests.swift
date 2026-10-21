@@ -63,6 +63,7 @@ private final class BundleToken {}
         #expect(hidden.items.count == 1 && hidden.failed.count == 1)
         #expect(try fixture("batch-trash", as: APIClient.BatchTrashResponse.self).trashed.count == 1)
         #expect(try fixture("batch-restore", as: APIClient.BatchRestoreResponse.self).failed.first?.error.isEmpty == false)
+        _ = try fixture("cancel-all", as: APIClient.CancelAllResponse.self)
     }
 
     /// Every response the contract check captures (web/scripts/api-contract.ts) is decoded
@@ -71,7 +72,7 @@ private final class BundleToken {}
         let decoded: Set<String> = [
             "libraries", "assets", "asset", "metadata", "folders", "tags", "trash", "flows", "comfy-status",
             "dashboard", "session", "status", "caption", "markdown", "generate-tags", "video-image", "runs", "run",
-            "batch-hidden", "batch-trash", "batch-restore",
+            "batch-hidden", "batch-trash", "batch-restore", "cancel-all",
         ]
         let bundle = Bundle(for: BundleToken.self)
         let all = Set((bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []).map { $0.deletingPathExtension().lastPathComponent })
