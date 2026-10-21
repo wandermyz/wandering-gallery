@@ -115,6 +115,42 @@ test('cancels a queued and a running job, also ones queued outside the app', asy
   await expect(run.locator('.gen-thumb img').first()).toBeVisible();
 });
 
+// parity: DASH-06
+test('cancels every queued and running job at once', async ({ page }) => {
+  await page.goto('/generate/wai-illustrious-tags');
+  await page.locator('.gen-tags').first().fill('masterpiece, cancel all');
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'More images per variation' }).click();
+  await page.getByRole('button', { name: /^Generate \d+ images$/ }).click();
+  await expect(page.locator('.gen-run')).toHaveCount(1);
+  const r = await fetch('http://127.0.0.1:2397/prompt', {
+    method: 'POST',
+    body: JSON.stringify({ prompt: { 1: { class_type: 'SaveImage', inputs: { filename_prefix: 'outside-all' } } }, client_id: 'someone-else' }),
+  });
+  const outside = ((await r.json()) as { prompt_id: string }).prompt_id;
+  const status = async (id: string) => ((await (await fetch(`http://127.0.0.1:2397/fake/jobs/${id}`)).json()) as { status: string }).status;
+
+  await page.goto('/dashboard');
+  const all = page.getByRole('button', { name: /^Cancel all \d+$/ });
+  await expect(all).toBeVisible();
+  await noHorizontalScroll(page);
+  await all.click();
+  await expect(page.getByRole('alertdialog')).toContainText(/Cancel all \d+ jobs\?/);
+  await page.keyboard.press('Escape');
+  expect(await status(outside)).toBe('queued');
+
+  await all.click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel all' }).click();
+  await expect(page.locator('.toast')).toContainText(/Cancelled \d+ jobs/);
+  await expect(page.locator('.dash-running')).toHaveCount(0);
+  await expect(page.locator('.dash-comfy')).toContainText('The queue is empty.');
+  await expect(all).toHaveCount(0);
+  expect(await status(outside)).toBe('cancelled');
+
+  // The run is over in Generate too.
+  await page.goto('/generate/wai-illustrious-tags');
+  await expect(page.locator('.gen-run .cap-pill', { hasText: 'Running' })).toHaveCount(0, { timeout: 20_000 });
+});
+
 // parity: DASH-04
 test('rejects a job id that is not one', async ({ request }) => {
   const csrf = (await (await request.get('/api/session')).json()).csrf;

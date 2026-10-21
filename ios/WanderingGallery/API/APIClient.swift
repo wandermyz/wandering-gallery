@@ -148,6 +148,7 @@ extension APIClient {
     nonisolated struct BatchHiddenResponse: Decodable, Sendable { let items: [Asset]; let failed: [BatchFailure] }
     nonisolated struct BatchTrashResponse: Decodable, Sendable { let trashed: [Int]; let failed: [BatchFailure] }
     nonisolated struct BatchRestoreResponse: Decodable, Sendable { let restored: [Int]; let failed: [BatchFailure] }
+    nonisolated struct CancelAllResponse: Decodable, Sendable { let cancelled: Int }
 
     nonisolated func libraries() async throws -> [Library] { try await (send("GET", "/api/libraries") as LibrariesResponse).libraries }
     nonisolated func status() async throws -> ServerStatus { try await send("GET", "/api/status") }
@@ -261,5 +262,9 @@ extension APIClient {
     nonisolated func cancelJob(_ id: String) async throws {
         let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id
         let _: OK = try await send("POST", "/api/dashboard/jobs/\(enc)/cancel")
+    }
+    /// Every queued and running ComfyUI job, whoever queued it. Returns how many.
+    nonisolated func cancelAllJobs() async throws -> Int {
+        try await (send("POST", "/api/dashboard/jobs/cancel-all") as CancelAllResponse).cancelled
     }
 }

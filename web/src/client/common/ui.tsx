@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { copyText, cx } from './util';
 
 const PATHS: Record<string, string> = {
@@ -147,7 +147,8 @@ export interface ConfirmOptions {
 
 export function ConfirmDialog({ opts, onResult }: { opts: ConfirmOptions | null; onResult: (ok: boolean) => void }) {
   const btn = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // Before paint, so an Escape right after the dialog shows is not missed.
+  useLayoutEffect(() => {
     if (!opts) return;
     btn.current?.focus();
     const onKey = (e: KeyboardEvent) => {

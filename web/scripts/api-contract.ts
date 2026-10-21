@@ -97,6 +97,7 @@ for (let i = 0; ; i++) {
   await new Promise((res) => setTimeout(res, 200));
 }
 captured.dashboard = await get('/api/dashboard');
+captured['cancel-all'] = await call('POST', '/api/dashboard/jobs/cancel-all');
 stop();
 
 // ---- Normalizing and comparing ------------------------------------------------------------

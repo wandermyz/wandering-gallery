@@ -180,6 +180,25 @@ export class Runs {
     if (own && own.run.status === 'running' && ['pending', 'queued', 'running'].includes(own.job.status)) own.job.status = 'cancelled';
   }
 
+  /**
+   * Cancels every job in ComfyUI's queue, queued by this app or not: the queued ones first,
+   * so ComfyUI does not start the next one meanwhile, then the running one. Returns how many.
+   */
+  async cancelAll(): Promise<number> {
+    const q = await this.comfy.queue(1);
+    const ids = [...q.pending, ...q.running].map((j) => j.id);
+    let failure: Error | null = null;
+    for (const id of ids) {
+      try {
+        await this.cancelJob(id);
+      } catch (e) {
+        failure ??= e as Error;
+      }
+    }
+    if (failure) throw failure;
+    return ids.length;
+  }
+
   /** The run that queued a ComfyUI job, and that job, while the run is tracked. */
   byPromptId(promptId: string): { run: Run; job: Job } | null {
     for (const run of this.runs.values()) {

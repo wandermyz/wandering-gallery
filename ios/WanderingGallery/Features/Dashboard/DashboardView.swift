@@ -15,6 +15,9 @@ struct DashboardView: View {
     @State private var confirming: DashJob?
     /// Jobs with a cancel request in flight.
     @State private var cancelling: Set<String> = []
+    /// How many jobs the Cancel all confirmation is about, while it shows.
+    @State private var confirmingAll: Int?
+    @State private var cancellingAll = false
     @State private var toast: DashToast?
     @State private var preview: DashPreview?
 
@@ -57,6 +60,15 @@ struct DashboardView: View {
             } message: { job in
                 Text(confirmMessage(job))
             }
+            .alert("Cancel all \(confirmingAll ?? 0) jobs?", isPresented: Binding(get: { confirmingAll != nil }, set: { if !$0 { confirmingAll = nil } })) {
+                Button("Cancel all", role: .destructive) {
+                    Task { await cancelAll() }
+                }
+                .accessibilityIdentifier("jobs-cancel-all-confirm")
+                Button("Keep", role: .cancel) {}
+            } message: {
+                Text("Everything in ComfyUI's queue is removed and the running job is stopped, also jobs not queued from this app.")
+            }
             .overlay(alignment: .bottom) {
                 if let toast {
                     ToastView(toast: toast)
@@ -92,6 +104,8 @@ struct DashboardView: View {
             comfy: data.comfy,
             cancelling: cancelling,
             onCancel: { confirming = $0 },
+            cancellingAll: cancellingAll,
+            onCancelAll: { confirmingAll = data.comfy.running.count + data.comfy.pending.count },
             onOpen: { job, asset in preview = DashPreview(asset: asset, title: job.output?.filename ?? "Output") }
         )
     }
@@ -124,6 +138,18 @@ struct DashboardView: View {
         do {
             try await model.client.cancelJob(job.id)
             show(DashToast(text: running ? "Job stopped" : "Job removed from the queue"))
+            await load()
+        } catch {
+            show(DashToast(text: "Cancel failed: \(error.localizedDescription)", isError: true))
+        }
+    }
+
+    private func cancelAll() async {
+        cancellingAll = true
+        defer { cancellingAll = false }
+        do {
+            let n = try await model.client.cancelAllJobs()
+            show(DashToast(text: n == 1 ? "Cancelled 1 job" : "Cancelled \(n) jobs"))
             await load()
         } catch {
             show(DashToast(text: "Cancel failed: \(error.localizedDescription)", isError: true))

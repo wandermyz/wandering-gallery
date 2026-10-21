@@ -5,12 +5,23 @@ struct ComfyCard: View {
     let comfy: Dashboard.ComfyState
     let cancelling: Set<String>
     let onCancel: (DashJob) -> Void
+    let cancellingAll: Bool
+    let onCancelAll: () -> Void
     let onOpen: (DashJob, OutputAsset) -> Void
 
     var body: some View {
         DashCard(title: "ComfyUI") {
             if comfy.online {
                 DashPill(text: comfy.running.isEmpty ? "Idle" : "Running", style: comfy.running.isEmpty ? .ok : .running)
+                let open = comfy.running.count + comfy.pending.count
+                if open > 1 {
+                    Button(cancellingAll ? "Cancelling…" : "Cancel all \(open)", role: .destructive, action: onCancelAll)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(cancellingAll)
+                        .fixedSize()
+                        .accessibilityIdentifier("jobs-cancel-all")
+                }
             } else {
                 DashPill(text: "Offline", style: .error)
             }
