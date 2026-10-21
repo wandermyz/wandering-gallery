@@ -27,7 +27,7 @@ struct TagsFlowView<Banners: View>: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     .disabled(!state.canTag || state.busyTags)
                     .accessibilityIdentifier("generate-tags-button")
                 } header: {
@@ -54,7 +54,7 @@ struct TagsFlowView<Banners: View>: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     .disabled(!state.canRun)
                     .accessibilityIdentifier("generate-start")
                 }

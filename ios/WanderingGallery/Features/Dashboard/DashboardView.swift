@@ -195,9 +195,9 @@ enum DashPillStyle {
 
     var colors: (bg: Color, fg: Color) {
         switch self {
-        case .running: (Color(red: 139 / 255, green: 124 / 255, blue: 246 / 255).opacity(0.2), Color(red: 0xc9 / 255, green: 0xc1 / 255, blue: 1))
-        case .ok: (Color(red: 91 / 255, green: 214 / 255, blue: 154 / 255).opacity(0.18), Color(red: 0x8e / 255, green: 0xe6 / 255, blue: 0xb9 / 255))
-        case .error: (Color(red: 1, green: 107 / 255, blue: 129 / 255).opacity(0.18), Color(red: 1, green: 0x9a / 255, blue: 0xaa / 255))
+        case .running: (Theme.accent.opacity(0.2), Theme.accentText)
+        case .ok: (Theme.success.opacity(0.18), Theme.hex(0x8ee6b9))
+        case .error: (Theme.favorite.opacity(0.18), Theme.hex(0xff9aaa))
         case .plain: (Theme.surface2, .secondary)
         }
     }
@@ -231,7 +231,7 @@ struct DashErrorLine: View {
         } icon: {
             Image(systemName: "exclamationmark.triangle")
         }
-        .foregroundStyle(Color(red: 1, green: 0.42, blue: 0.5))
+        .foregroundStyle(Theme.favorite)
     }
 }
 

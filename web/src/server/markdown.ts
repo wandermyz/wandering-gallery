@@ -128,18 +128,18 @@ export async function markdownCard(file: string, size: number): Promise<Buffer> 
   let y = pad + titleSize;
   const parts: string[] = [];
   for (const l of titleLines) {
-    parts.push(`<text x="${pad}" y="${y}" font-size="${titleSize}" font-weight="700" fill="#ececf1">${esc(l)}</text>`);
+    parts.push(`<text x="${pad}" y="${y}" font-size="${titleSize}" font-weight="700" fill="#f5f8f8">${esc(l)}</text>`);
     y += titleSize * 1.3;
   }
   y += bodySize * 0.6;
   const room = Math.max(0, Math.floor((size - pad - y) / (bodySize * 1.55)) + 1);
   for (const l of wrap(body, width / bodySize, room)) {
-    parts.push(`<text x="${pad}" y="${y}" font-size="${bodySize}" fill="#a9a9b6">${esc(l)}</text>`);
+    parts.push(`<text x="${pad}" y="${y}" font-size="${bodySize}" fill="#a8b1b0">${esc(l)}</text>`);
     y += bodySize * 1.55;
   }
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
-    `<rect width="100%" height="100%" fill="#1a1a21"/>` +
+    `<rect width="100%" height="100%" fill="#151a1a"/>` +
     `<g font-family="Noto Sans CJK SC, Noto Sans CJK JP, Noto Sans, DejaVu Sans, sans-serif">${parts.join('')}</g></svg>`,
   );
 }

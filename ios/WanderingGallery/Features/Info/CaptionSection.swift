@@ -58,11 +58,11 @@ struct CaptionSection: View {
                         .disabled(busy || !dirty || draft.trimmingCharacters(in: .whitespaces).isEmpty)
                     if dirty {
                         Button("Save & approve") { Task { await act(.save, caption: draft, approve: true) } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                             .disabled(busy || draft.trimmingCharacters(in: .whitespaces).isEmpty)
                     } else {
                         Button("Approve") { Task { await act(.approve) } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                             .disabled(busy || cap.txt == nil || status == .approved)
                             .accessibilityIdentifier("caption-approve")
                     }
@@ -81,7 +81,7 @@ struct CaptionSection: View {
                     if !ro {
                         HStack {
                             Button("Accept") { Task { await act(.accept_candidate) } }
-                                .buttonStyle(.borderedProminent).disabled(busy || dirty)
+                                .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).disabled(busy || dirty)
                             Button("Discard") { Task { await act(.discard_candidate) } }
                                 .buttonStyle(.bordered).disabled(busy)
                         }

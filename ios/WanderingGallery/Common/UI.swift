@@ -1,12 +1,22 @@
 import SwiftUI
 
 enum Theme {
-    static let accent = Color(red: 0x8b / 255, green: 0x7c / 255, blue: 0xf6 / 255)
-    static let star = Color(red: 0xf2 / 255, green: 0xb8 / 255, blue: 0x4b / 255)
-    static let favorite = Color(red: 1, green: 0.36, blue: 0.45)
-    static let background = Color(red: 0x0b / 255, green: 0x0b / 255, blue: 0x0d / 255)
-    static let surface = Color(red: 0x14 / 255, green: 0x14 / 255, blue: 0x18 / 255)
-    static let surface2 = Color(red: 0x1d / 255, green: 0x1d / 255, blue: 0x23 / 255)
+    // The Miku palette, the same as the web's styles.css.
+    static let accent = hex(0x39d8c7)
+    static let accentText = hex(0x8eede2)
+    /// Text on an accent-filled control (white is unreadable on mint).
+    static let onAccent = hex(0x032421)
+    static let star = hex(0xf2b84b)
+    static let favorite = hex(0xff6685)
+    static let danger = hex(0xff646f)
+    static let success = hex(0x62d89c)
+    static let background = hex(0x050707)
+    static let surface = hex(0x0d1111)
+    static let surface2 = hex(0x151a1a)
+
+    static func hex(_ v: Int) -> Color {
+        Color(red: Double(v >> 16 & 0xff) / 255, green: Double(v >> 8 & 0xff) / 255, blue: Double(v & 0xff) / 255)
+    }
 
     static func caption(_ s: CaptionStatus) -> Color {
         switch s {

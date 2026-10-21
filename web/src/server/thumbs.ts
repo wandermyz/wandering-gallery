@@ -123,7 +123,7 @@ async function audioCard(file: string, opts: ThumbOptions): Promise<Buffer> {
     `aformat=channel_layouts=mono,showwavespic=s=${w}x${h}:colors=0x8c8cf0:scale=sqrt:draw=full`,
     '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'], { timeoutMs: 60_000, maxBytes: 8 * 1024 * 1024 })).stdout;
   if (wave.length === 0) throw new Error('could not decode the audio');
-  return sharp({ create: { width: size, height: size, channels: 3, background: '#1a1a21' } })
+  return sharp({ create: { width: size, height: size, channels: 3, background: '#151a1a' } })
     .composite([{ input: wave, left: Math.round((size - w) / 2), top: Math.round((size - h) / 2) }])
     .png()
     .toBuffer();
