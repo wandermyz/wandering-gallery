@@ -195,8 +195,13 @@ function useAssets(q: Query, enabled: boolean) {
     setItems((cur) => cur.filter((x) => x.id !== id));
     setTotal((t) => (t === null ? t : Math.max(0, t - 1)));
   }, []);
+  const removeMany = useCallback((ids: number[]) => {
+    const gone = new Set(ids);
+    setItems((cur) => cur.filter((x) => !gone.has(x.id)));
+    setTotal((t) => (t === null ? t : Math.max(0, t - gone.size)));
+  }, []);
 
-  return { items, hasMore: !!next, total, loading, error, reload, loadMore, refreshHead, patch, remove };
+  return { items, hasMore: !!next, total, loading, error, reload, loadMore, refreshHead, patch, remove, removeMany };
 }
 
 // ---- App ---------------------------------------------------------------------------
@@ -225,11 +230,16 @@ export default function GalleryApp() {
   /** Filename filter over the loaded items of the current view; null while the bar is closed. */
   const [nameFilter, setNameFilter] = useState<string | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
+  /** Multi-select: the selected asset ids, or null when not selecting. */
+  const [selection, setSelection] = useState<Set<number> | null>(null);
+  /** Where the last tap in the selection was, for shift-click ranges. */
+  const selectAnchor = useRef<number | null>(null);
 
   const q = useMemo(() => queryOf(route), [route.library, route.folder, route.tag, route.favorite, route.minRating, route.kind, route.caption, route.order, route.flat]);
   const list = useAssets(q, route.view === 'gallery');
   const needle = nameFilter?.trim().toLowerCase() ?? '';
   const shown = useMemo(() => (needle ? list.items.filter((a) => a.name.toLowerCase().includes(needle)) : list.items), [list.items, needle]);
+  const selected = useMemo(() => (selection ? shown.filter((a) => selection.has(a.id)) : []), [selection, shown]);
 
   const toast = useCallback((text: string, opts: Partial<ToastMsg> = {}) => {
     const id = ++toastSeq;
@@ -364,6 +374,23 @@ export default function GalleryApp() {
     return () => clearTimeout(t);
   }, [status]);
 
+  // A selection belongs to one view: leave it when the view changes.
+  useEffect(() => setSelection(null), [q, route.view]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('selecting', !!selection);
+  }, [!!selection]);
+  useEffect(() => () => document.documentElement.classList.remove('selecting'), []);
+  // Escape leaves selecting (unless a dialog or the viewer has it).
+  const escapeSelects = useRef(false);
+  escapeSelects.current = !!selection && !route.asset && !confirm;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && escapeSelects.current) setSelection(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Lock page scroll while the viewer is open.
   useEffect(() => {
     document.documentElement.classList.toggle('viewer-open', !!route.asset);
@@ -483,6 +510,118 @@ export default function GalleryApp() {
     });
   };
 
+  // ---- Multi-select ----------------------------------------------------------------
+
+  const startSelecting = () => {
+    selectAnchor.current = null;
+    setSelection(new Set());
+  };
+
+  const onSelect = (index: number, range: boolean) => {
+    const a = shown[index];
+    if (!a) return;
+    const anchor = selectAnchor.current;
+    selectAnchor.current = index;
+    setSelection((cur) => {
+      const next = new Set(cur ?? []);
+      if (range && anchor !== null && anchor < shown.length) {
+        // Shift-click: select everything between the last tap and this one.
+        const [from, to] = anchor < index ? [anchor, index] : [index, anchor];
+        for (let i = from; i <= to; i++) next.add(shown[i].id);
+      } else if (next.has(a.id)) {
+        next.delete(a.id);
+      } else {
+        next.add(a.id);
+      }
+      return next;
+    });
+  };
+
+  const allSelected = selected.length > 0 && selected.length === shown.length;
+  const selectAll = () => setSelection(allSelected ? new Set() : new Set(shown.map((a) => a.id)));
+
+  /** Unhide when every selected item is hidden (only possible unlocked), else hide. */
+  const unhiding = selected.length > 0 && selected.every((a) => a.hidden);
+  const plural = (n: number) => `${n.toLocaleString()} item${n === 1 ? '' : 's'}`;
+  const failures = (failed: { error: string }[]) =>
+    `${plural(failed.length)} could not be changed: ${[...new Set(failed.map((f) => f.error))].join('; ')}`;
+
+  const onHideSelected = async () => {
+    const items = selected;
+    if (!items.length) return;
+    const hidden = !unhiding;
+    try {
+      const r = await api.hideMany(items.map((a) => a.id), hidden);
+      if (hidden && !unlocked) {
+        // Hidden while locked: they leave the view, like a delete.
+        list.removeMany(r.items.map((a) => a.id));
+      } else {
+        for (const a of r.items) list.patch(a);
+      }
+      void loadLibraries();
+      setSelection(null);
+      if (r.items.length) toast(hidden ? `Hid ${plural(r.items.length)}` : `Unhid ${plural(r.items.length)}`);
+      if (r.failed.length) toast(failures(r.failed), { kind: 'error' });
+    } catch (e) {
+      toast(`Could not update: ${(e as Error).message}`, { kind: 'error' });
+    }
+  };
+
+  const onDeleteSelected = async () => {
+    const items = selected;
+    if (!items.length) return;
+    const readOnly = items.filter((a) => !libById.get(a.library)?.writable);
+    const writable = items.filter((a) => libById.get(a.library)?.writable);
+    if (!writable.length) {
+      toast(items.length === 1 ? 'This library is read-only.' : 'These items are in read-only libraries.', { kind: 'error' });
+      return;
+    }
+    const ok = await ask({
+      title: `Move ${plural(writable.length)} to trash?`,
+      message: (
+        <>
+          <p class="muted">The files are moved out of their library folders into the trash. You can restore them from Trash for {status?.trashRetentionDays ?? 7} days.</p>
+          {readOnly.length > 0 && <p class="muted">{plural(readOnly.length)} in read-only libraries will be left alone.</p>}
+        </>
+      ),
+      confirm: 'Move to trash',
+      danger: true,
+    });
+    if (!ok) return;
+    let r: Awaited<ReturnType<typeof api.trashMany>>;
+    try {
+      r = await api.trashMany(writable);
+    } catch (e) {
+      toast((e as Error).message, { kind: 'error' });
+      return;
+    }
+    list.removeMany(r.trashed);
+    setSelection(null);
+    void loadStatus();
+    void loadLibraries();
+    if (r.trashed.length) {
+      const ids = r.trashed;
+      toast(`Moved ${plural(ids.length)} to trash`, {
+        action: {
+          label: 'Undo',
+          run: async () => {
+            try {
+              const back = await api.restoreMany(ids);
+              void list.refreshHead([]);
+              void loadStatus();
+              void loadLibraries();
+              if (back.restored.length) toast(`Restored ${plural(back.restored.length)}`);
+              if (back.failed.length) toast(failures(back.failed), { kind: 'error' });
+            } catch (err) {
+              toast((err as Error).message, { kind: 'error' });
+            }
+          },
+        },
+      });
+    }
+    if (r.failed.length) toast(failures(r.failed), { kind: 'error' });
+  };
+
   // The fetched original is kept so a second tap can share instantly: iOS only allows
   // navigator.share() shortly after a tap, and a large download can outlast that window.
   const shareCache = useRef<{ id: number; v: string; file: File } | null>(null);
@@ -561,6 +700,18 @@ export default function GalleryApp() {
 
   return (
     <div class="app">
+      {selection && route.view === 'gallery' ? (
+        <header class="topbar">
+          <IconButton icon="close" label="Cancel selection" onClick={() => setSelection(null)} />
+          <div class="topbar-title">
+            <h1 aria-live="polite">{selected.length ? `${plural(selected.length)} selected` : 'Select items'}</h1>
+            <span class="topbar-sub">{list.hasMore ? 'Select all picks the loaded items' : ''}</span>
+          </div>
+          <button type="button" class="btn btn-sm" onClick={selectAll} disabled={!shown.length}>
+            {allSelected ? 'Select none' : 'Select all'}
+          </button>
+        </header>
+      ) : (
       <header class="topbar">
         <IconButton icon="menu" label="Libraries" onClick={() => setMenu(true)} />
         <div class="topbar-title">
@@ -590,6 +741,7 @@ export default function GalleryApp() {
               onClick={() => (nameFilter !== null ? closeNameFilter() : setNameFilter(''))}
             />
             <IconButton icon="filter" label="Filter and view options" active={filtersActive} onClick={() => setFilters(true)} />
+            <IconButton icon="check" label="Select items" disabled={!shown.length} onClick={startSelecting} />
           </>
         )}
         {hiddenEnabled && (
@@ -601,6 +753,7 @@ export default function GalleryApp() {
           />
         )}
       </header>
+      )}
 
       {route.view === 'gallery' && nameFilter !== null && (
         <div class="name-filter">
@@ -710,6 +863,11 @@ export default function GalleryApp() {
                 onNeedMore={() => void list.loadMore()}
                 onOpen={openViewer}
                 focusId={focusId}
+                selected={selection}
+                onSelect={(index, range) => {
+                  if (!selection) selectAnchor.current = null;
+                  onSelect(index, range);
+                }}
               />
             )}
             {list.hasMore && list.items.length > 0 && (needle ? (
@@ -721,6 +879,21 @@ export default function GalleryApp() {
           </>
         )}
       </main>
+
+      {selection && route.view === 'gallery' && (
+        <div class="select-bar" role="toolbar" aria-label="Selected items">
+          {hiddenEnabled && (
+            <button type="button" class="btn" disabled={!selected.length} onClick={() => void onHideSelected()}>
+              <Icon name={unhiding ? 'eye' : 'eye-off'} size={18} />
+              {unhiding ? 'Unhide' : 'Hide'}
+            </button>
+          )}
+          <button type="button" class="btn btn-danger-ghost" disabled={!selected.length} onClick={() => void onDeleteSelected()}>
+            <Icon name="trash" size={18} />
+            Move to trash
+          </button>
+        </div>
+      )}
 
       {newCount > 0 && !route.asset && (
         <button

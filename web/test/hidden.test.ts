@@ -110,6 +110,24 @@ describe('hidden assets', () => {
     expect(await names('/api/assets')).toEqual(['public.png', 'secret.png']);
   });
 
+  it('hides a batch while locked, and unhides it only once unlocked', async () => {
+    const { pub, secret } = await setup();
+    const hid = (await post('/api/batch/hidden', { ids: [pub, secret], hidden: true })).json();
+    expect(hid.items.map((a: { id: number; hidden: boolean }) => [a.id, a.hidden])).toEqual([[pub, true], [secret, true]]);
+    expect(hid.failed).toEqual([]);
+    expect(await names('/api/assets')).toEqual([]);
+
+    // Locked, the hidden items are not there to unhide (or trash).
+    expect((await post('/api/batch/hidden', { ids: [pub, secret], hidden: false })).json())
+      .toEqual({ items: [], failed: [{ id: pub, error: 'asset not found' }, { id: secret, error: 'asset not found' }] });
+    expect((await post('/api/batch/trash', { items: [{ id: pub }] })).json().failed).toEqual([{ id: pub, error: 'asset not found' }]);
+
+    const cookie = await unlockCookie();
+    expect((await post('/api/batch/hidden', { ids: [pub], hidden: false }, cookie)).json().items).toMatchObject([{ id: pub, hidden: false }]);
+    expect(await names('/api/assets')).toEqual(['public.png']);
+    expect((await post('/api/batch/hidden', { ids: [pub] })).statusCode).toBe(400);
+  });
+
   it('stays hidden in the trash, and after a move', async () => {
     const { secret } = await setup();
     await post(`/api/assets/${secret}/hidden`, { hidden: true });

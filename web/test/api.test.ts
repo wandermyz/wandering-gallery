@@ -252,6 +252,36 @@ describe('HTTP API', () => {
     expect((await app.inject({ url: '/api/trash' })).json().items).toHaveLength(0);
   });
 
+  it('trashes and restores a batch, reporting the items that fail', async () => {
+    await setup([{ id: 'main', writable: true }, { id: 'ro', writable: false }]);
+    for (const n of ['a', 'b', 'c']) await makePng(path.join(env.lib('main'), `${n}.png`), { color: '#102030' });
+    await makePng(path.join(env.lib('ro'), 'r.png'));
+    ageAll(env.root);
+    await env.sync();
+    const items = (await app.inject({ url: '/api/assets' })).json().items as { id: number; name: string; size: number; mtimeMs: number }[];
+    const byName = (n: string) => items.find((x) => x.name === n)!;
+    const [a, b, c, r] = ['a.png', 'b.png', 'c.png', 'r.png'].map(byName);
+
+    const del = (await post('/api/batch/trash', {
+      items: [a, b, r, { id: c.id, size: c.size + 1, mtimeMs: c.mtimeMs }, { id: 999999 }].map((x) => ({ id: x.id, size: x.size, mtimeMs: x.mtimeMs })),
+    })).json();
+    expect(del.trashed.sort()).toEqual([a.id, b.id].sort());
+    expect(del.failed).toEqual([
+      { id: r.id, error: expect.stringMatching(/read-only/) },
+      { id: c.id, error: expect.stringMatching(/changed on disk/) },
+      { id: 999999, error: 'asset not found' },
+    ]);
+    expect(fs.readdirSync(env.lib('main'))).toEqual(['c.png']);
+
+    const back = (await post('/api/batch/restore', { ids: [a.id, b.id, c.id] })).json();
+    expect(back).toEqual({ restored: [a.id, b.id], failed: [{ id: c.id, error: 'asset is not in the trash' }] });
+    expect(fs.readdirSync(env.lib('main')).sort()).toEqual(['a.png', 'b.png', 'c.png']);
+
+    for (const body of [{}, { items: [] }, { items: [{ id: 'x' }] }]) {
+      expect((await post('/api/batch/trash', body)).statusCode).toBe(400);
+    }
+  });
+
   it('rejects deletes on read-only libraries', async () => {
     await setup([{ id: 'ro', writable: false }]);
     const file = path.join(env.lib('ro'), 'a.png');

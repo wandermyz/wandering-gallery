@@ -607,6 +607,73 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return toJson(req, await trash.trash(id, expected));
   });
 
+  // ---- Batch actions (multi-select) -----------------------------------------
+  // Each item succeeds or fails on its own; the failures come back with their reason.
+
+  const batchIds = (v: unknown): number[] => {
+    if (!Array.isArray(v) || !v.length || v.length > 5000 || !v.every((x) => Number.isSafeInteger(x) && x > 0)) {
+      throw new HttpError('ids must be a list of 1 to 5000 asset ids', 400);
+    }
+    return [...new Set(v as number[])];
+  };
+  const isVisible = (req: FastifyRequest, row: AssetRow | undefined, status: string) =>
+    !!row && row.status === status && (!isHidden(row) || unlock.isUnlocked(req));
+
+  app.post('/api/batch/hidden', async (req) => {
+    const body = (req.body ?? {}) as { ids?: unknown; hidden?: unknown };
+    const ids = batchIds(body.ids);
+    if (typeof body.hidden !== 'boolean') throw new HttpError('hidden must be true or false', 400);
+    const items: ReturnType<typeof toJson>[] = [];
+    const failed: { id: number; error: string }[] = [];
+    for (const id of ids) {
+      if (!isVisible(req, db.asset(id), 'ready')) {
+        failed.push({ id, error: 'asset not found' });
+        continue;
+      }
+      db.setHidden(id, body.hidden);
+      items.push(toJson(req, db.asset(id)!));
+    }
+    return { items, failed };
+  });
+
+  app.post('/api/batch/trash', async (req) => {
+    const body = (req.body ?? {}) as { items?: unknown };
+    const list = Array.isArray(body.items) ? (body.items as { id?: unknown; size?: unknown; mtimeMs?: unknown }[]) : null;
+    const ids = batchIds(list?.map((x) => x?.id));
+    const expected = new Map(list!.map((x) => [x.id as number, {
+      size: typeof x.size === 'number' ? x.size : undefined,
+      mtimeMs: typeof x.mtimeMs === 'number' ? x.mtimeMs : undefined,
+    }]));
+    const trashed: number[] = [];
+    const failed: { id: number; error: string }[] = [];
+    for (const id of ids) {
+      try {
+        if (!isVisible(req, db.asset(id), 'ready')) throw new HttpError('asset not found', 404);
+        await trash.trash(id, expected.get(id));
+        trashed.push(id);
+      } catch (err) {
+        failed.push({ id, error: (err as Error).message });
+      }
+    }
+    return { trashed, failed };
+  });
+
+  app.post('/api/batch/restore', async (req) => {
+    const ids = batchIds(((req.body ?? {}) as { ids?: unknown }).ids);
+    const restored: number[] = [];
+    const failed: { id: number; error: string }[] = [];
+    for (const id of ids) {
+      try {
+        if (!isVisible(req, db.asset(id), 'trashed')) throw new HttpError('asset is not in the trash', 404);
+        await trash.restore(id);
+        restored.push(id);
+      } catch (err) {
+        failed.push({ id, error: (err as Error).message });
+      }
+    }
+    return { restored, failed };
+  });
+
   app.get('/api/trash', async (req) => {
     const rows = db.all<AssetRow>(`SELECT * FROM assets WHERE status = 'trashed' AND ${visible(req)} ORDER BY trashed_at_ms DESC LIMIT 2000`);
     return {

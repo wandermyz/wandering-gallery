@@ -46,6 +46,8 @@ async function setup() {
     '<video src="scene.mp4"></video>', '', '![](secret.png)', '', 'See [the scene](scene.png). The end.', '',
     '```mermaid', 'flowchart LR', '  Dawn --> Dusk', '```', '', '```mermaid', 'not a diagram', '```', '',
   ].join('\n'));
+  // Multi-select hides and trashes these.
+  for (let i = 1; i <= 3; i++) await makePng(path.join(lib, 'batch', `b${i}.png`), { color: `hsl(${i * 90}, 50%, 50%)` });
   await makePng(path.join(ro, 'locked.png'), { color: '#777777' });
   // Generate: output folder of the fake ComfyUI (a library hidden from All media) and the
   // local prompts file.

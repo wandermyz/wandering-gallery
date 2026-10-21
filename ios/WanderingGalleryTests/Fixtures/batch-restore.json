@@ -1,0 +1,11 @@
+{
+  "restored": [
+    10
+  ],
+  "failed": [
+    {
+      "id": 999999999,
+      "error": "asset is not in the trash"
+    }
+  ]
+}
