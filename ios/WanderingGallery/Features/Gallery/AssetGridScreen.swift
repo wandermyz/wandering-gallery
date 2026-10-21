@@ -52,13 +52,32 @@ struct AssetGridScreen: View {
     @State private var showFilters = false
     @State private var search = ""
     @State private var viewer: ViewerStart?
+    /// Multi-select: the selected asset ids, or nil when not selecting.
+    @State private var selection: Set<Int>?
+    @State private var confirmTrash = false
+    @State private var working = false
+    @State private var toast: Toast?
+    @State private var error: String?
     @AppStorage("gridDensity") private var density = GridDensity.m
 
     var body: some View {
         content
-            .navigationTitle(title)
+            .navigationTitle(selection == nil ? title : selectedTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(selection != nil)
             .toolbar { toolbar }
+            .safeAreaInset(edge: .bottom) {
+                if selection != nil { selectBar }
+            }
+            .overlay(alignment: .bottom) {
+                if let toast { toastView(toast) }
+            }
+            .confirmationDialog(trashTitle, isPresented: $confirmTrash, titleVisibility: .visible) {
+                Button("Move to trash", role: .destructive) { Task { await trashSelected() } }
+            } message: {
+                Text(trashMessage)
+            }
+            .errorAlert($error)
             .searchable(text: $search, placement: .toolbar, prompt: "Filter by filename")
             .sheet(isPresented: $showFilters) {
                 FilterSheet(filters: $filters, density: $density, isLibrary: libraryID != nil, isFavorites: scope == .favorites)
@@ -75,6 +94,7 @@ struct AssetGridScreen: View {
             .task(id: TaskKey(query: query, epoch: model.visibilityEpoch)) {
                 let l = AssetListModel(client: model.client, query: query)
                 list = l
+                selection = nil
                 await l.reload()
                 await loadFolders()
             }
@@ -167,7 +187,9 @@ struct AssetGridScreen: View {
                             items: shown, density: density,
                             groupByDay: !filters.ascending && density != .s,
                             onOpen: { viewer = ViewerStart(id: $0.id) },
-                            onNearEnd: { Task { await list.loadMore() } }
+                            onNearEnd: { Task { await list.loadMore() } },
+                            selection: selection,
+                            onSelect: toggle
                         )
                         if list.hasMore {
                             if search.isEmpty {
@@ -249,7 +271,172 @@ struct AssetGridScreen: View {
         .padding(.vertical, 60)
     }
 
+    // MARK: Multi-select
+
+    struct Toast: Equatable {
+        let id = UUID()
+        let text: String
+        /// Trashed ids the Undo button restores.
+        var undo: [Int] = []
+    }
+
+    private var selected: [Asset] {
+        guard let selection else { return [] }
+        return shown.filter { selection.contains($0.id) }
+    }
+
+    private static func plural(_ n: Int) -> String { "\(n.formatted()) item\(n == 1 ? "" : "s")" }
+
+    private var selectedTitle: String {
+        let n = selected.count
+        return n == 0 ? "Select items" : "\(Self.plural(n)) selected"
+    }
+
+    private var allSelected: Bool { !shown.isEmpty && selected.count == shown.count }
+    /// Unhide when every selected item is hidden (only possible unlocked), else hide.
+    private var unhiding: Bool { !selected.isEmpty && selected.allSatisfy(\.hidden) }
+    private var writableSelected: [Asset] { selected.filter { model.library($0.library)?.writable == true } }
+
+    private var trashTitle: String { "Move \(Self.plural(writableSelected.count)) to trash?" }
+    private var trashMessage: String {
+        var s = "They can be restored from Trash for \(model.status?.trashRetentionDays ?? 7) days."
+        let readOnly = selected.count - writableSelected.count
+        if readOnly > 0 { s += " \(Self.plural(readOnly)) in read-only libraries will be left alone." }
+        return s
+    }
+
+    private func toggle(_ a: Asset) {
+        var s = selection ?? []
+        if s.contains(a.id) { s.remove(a.id) } else { s.insert(a.id) }
+        selection = s
+    }
+
+    private func failures(_ failed: [APIClient.BatchFailure]) -> String {
+        var seen = Set<String>()
+        let reasons = failed.map(\.error).filter { seen.insert($0).inserted }
+        return "\(Self.plural(failed.count)) could not be changed: \(reasons.joined(separator: "; "))"
+    }
+
+    private func show(_ t: Toast) {
+        withAnimation { toast = t }
+        Task {
+            try? await Task.sleep(for: .seconds(t.undo.isEmpty ? 2.5 : 6))
+            withAnimation { if toast?.id == t.id { toast = nil } }
+        }
+    }
+
+    private func hideSelected() async {
+        guard let list, !selected.isEmpty else { return }
+        let hidden = !unhiding
+        working = true
+        defer { working = false }
+        do {
+            let r = try await model.client.hideMany(selected.map(\.id), hidden)
+            if hidden && !model.unlocked {
+                // Hidden items leave every list while locked.
+                list.remove(r.items.map(\.id))
+            } else {
+                r.items.forEach(list.patch)
+            }
+            selection = nil
+            await model.loadLibraries()
+            if !r.items.isEmpty { show(Toast(text: "\(hidden ? "Hid" : "Unhid") \(Self.plural(r.items.count))")) }
+            if !r.failed.isEmpty { error = failures(r.failed) }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func trashSelected() async {
+        guard let list, !writableSelected.isEmpty else { return }
+        working = true
+        defer { working = false }
+        do {
+            let r = try await model.client.trashMany(writableSelected)
+            list.remove(r.trashed)
+            selection = nil
+            if !r.trashed.isEmpty { show(Toast(text: "Moved \(Self.plural(r.trashed.count)) to trash", undo: r.trashed)) }
+            if !r.failed.isEmpty { error = failures(r.failed) }
+            await model.loadStatus()
+            await model.loadLibraries()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func undoTrash(_ ids: [Int]) async {
+        withAnimation { toast = nil }
+        do {
+            let r = try await model.client.restoreMany(ids)
+            await list?.refreshHead(removed: [])
+            if !r.restored.isEmpty { show(Toast(text: "Restored \(Self.plural(r.restored.count))")) }
+            if !r.failed.isEmpty { error = failures(r.failed) }
+            await model.loadStatus()
+            await model.loadLibraries()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private var selectBar: some View {
+        HStack(spacing: 12) {
+            if model.hiddenEnabled {
+                Button { Task { await hideSelected() } } label: {
+                    Label(unhiding ? "Unhide" : "Hide", systemImage: unhiding ? "eye" : "eye.slash")
+                        .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("select-hide")
+            }
+            Button(role: .destructive) {
+                if writableSelected.isEmpty {
+                    error = selected.count == 1 ? "This library is read-only." : "These items are in read-only libraries."
+                } else {
+                    confirmTrash = true
+                }
+            } label: {
+                Label("Move to trash", systemImage: "trash").frame(maxWidth: .infinity)
+            }
+            .tint(.red)
+            .accessibilityIdentifier("select-trash")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .disabled(selected.isEmpty || working)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func toastView(_ t: Toast) -> some View {
+        HStack(spacing: 14) {
+            Text(t.text).font(.callout)
+            if !t.undo.isEmpty {
+                Button("Undo") { Task { await undoTrash(t.undo) } }
+                    .font(.callout.weight(.bold))
+                    .accessibilityIdentifier("toast-undo")
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.bottom, selection == nil ? 16 : 80)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("toast")
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        if selection != nil {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { selection = nil }
+                    .accessibilityIdentifier("select-done")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button(allSelected ? "Select None" : "Select All") {
+                    selection = allSelected ? [] : Set(shown.map(\.id))
+                }
+                .disabled(shown.isEmpty)
+                .accessibilityIdentifier("select-all")
+            }
+        } else {
+            regularToolbar
+        }
+    }
+
+    @ToolbarContentBuilder private var regularToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             if scope != .favorites {
                 Button {
@@ -264,6 +451,12 @@ struct AssetGridScreen: View {
             }
             .accessibilityLabel("Filter and view options")
             .accessibilityIdentifier("grid-filters")
+            Button { selection = [] } label: {
+                Image(systemName: "checkmark.circle")
+            }
+            .accessibilityLabel("Select items")
+            .accessibilityIdentifier("grid-select")
+            .disabled(shown.isEmpty)
             if model.hiddenEnabled {
                 Button(action: showUnlock) {
                     Image(systemName: model.unlocked ? "lock.open" : "lock")

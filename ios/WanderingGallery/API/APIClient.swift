@@ -143,6 +143,11 @@ extension APIClient {
     nonisolated struct MarkdownResponse: Decodable, Sendable { let text: String; let refs: [String: Asset?] }
     nonisolated struct RenameResponse: Decodable, Sendable { let id: Int; let name: String; let merged: Bool }
     nonisolated struct PurgeAllResponse: Decodable, Sendable { let deleted: Int; let failed: Int; let error: String? }
+    /// Multi-select: each item succeeds or fails on its own.
+    nonisolated struct BatchFailure: Decodable, Sendable { let id: Int; let error: String }
+    nonisolated struct BatchHiddenResponse: Decodable, Sendable { let items: [Asset]; let failed: [BatchFailure] }
+    nonisolated struct BatchTrashResponse: Decodable, Sendable { let trashed: [Int]; let failed: [BatchFailure] }
+    nonisolated struct BatchRestoreResponse: Decodable, Sendable { let restored: [Int]; let failed: [BatchFailure] }
 
     nonisolated func libraries() async throws -> [Library] { try await (send("GET", "/api/libraries") as LibrariesResponse).libraries }
     nonisolated func status() async throws -> ServerStatus { try await send("GET", "/api/status") }
@@ -207,6 +212,17 @@ extension APIClient {
         let _: OK = try await send("POST", "/api/trash/\(id)/purge")
     }
     nonisolated func purgeAll() async throws -> PurgeAllResponse { try await send("POST", "/api/trash/purge-all") }
+    nonisolated func hideMany(_ ids: [Int], _ hidden: Bool) async throws -> BatchHiddenResponse {
+        struct Body: Encodable { let ids: [Int]; let hidden: Bool }
+        return try await send("POST", "/api/batch/hidden", body: Body(ids: ids, hidden: hidden))
+    }
+    nonisolated func trashMany(_ items: [Asset]) async throws -> BatchTrashResponse {
+        struct Item: Encodable { let id: Int; let size: Int; let mtimeMs: Double }
+        return try await send("POST", "/api/batch/trash", body: ["items": items.map { Item(id: $0.id, size: $0.size, mtimeMs: $0.mtimeMs) }])
+    }
+    nonisolated func restoreMany(_ ids: [Int]) async throws -> BatchRestoreResponse {
+        try await send("POST", "/api/batch/restore", body: ["ids": ids])
+    }
     nonisolated func rescan(library: String? = nil) async throws {
         let _: OK = try await send("POST", "/api/rescan", body: library.map { ["library": $0] } ?? [:])
     }

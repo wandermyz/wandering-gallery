@@ -58,12 +58,20 @@ private final class BundleToken {}
         #expect(run.jobs.allSatisfy { $0.status == "completed" })
     }
 
+    @Test func batches() throws {
+        let hidden = try fixture("batch-hidden", as: APIClient.BatchHiddenResponse.self)
+        #expect(hidden.items.count == 1 && hidden.failed.count == 1)
+        #expect(try fixture("batch-trash", as: APIClient.BatchTrashResponse.self).trashed.count == 1)
+        #expect(try fixture("batch-restore", as: APIClient.BatchRestoreResponse.self).failed.first?.error.isEmpty == false)
+    }
+
     /// Every response the contract check captures (web/scripts/api-contract.ts) is decoded
     /// above: a new endpoint fails here until the app has a model for it.
     @Test func everyFixtureIsDecoded() throws {
         let decoded: Set<String> = [
             "libraries", "assets", "asset", "metadata", "folders", "tags", "trash", "flows", "comfy-status",
             "dashboard", "session", "status", "caption", "markdown", "generate-tags", "video-image", "runs", "run",
+            "batch-hidden", "batch-trash", "batch-restore",
         ]
         let bundle = Bundle(for: BundleToken.self)
         let all = Set((bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []).map { $0.deletingPathExtension().lastPathComponent })

@@ -7,6 +7,10 @@ struct AssetGrid: View {
     let groupByDay: Bool
     let onOpen: (Asset) -> Void
     let onNearEnd: () -> Void
+    /// The selected asset ids while selecting (a tap toggles instead of opening), else nil.
+    var selection: Set<Int>? = nil
+    /// Toggles an item: a tap while selecting, or a long press (which starts selecting).
+    var onSelect: ((Asset) -> Void)? = nil
 
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: density.minWidth), spacing: 2)] }
 
@@ -35,8 +39,13 @@ struct AssetGrid: View {
 
     @ViewBuilder private func cells(_ items: [Asset], trigger: Set<Int>) -> some View {
         ForEach(items) { a in
-            AssetCell(asset: a)
-                .onTapGesture { onOpen(a) }
+            AssetCell(asset: a, selected: selection.map { $0.contains(a.id) })
+                .onTapGesture { if selection != nil, let onSelect { onSelect(a) } else { onOpen(a) } }
+                .onLongPressGesture(minimumDuration: 0.45) {
+                    guard selection == nil, let onSelect else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onSelect(a)
+                }
                 .onAppear { if trigger.contains(a.id) { onNearEnd() } }
         }
     }
@@ -45,6 +54,8 @@ struct AssetGrid: View {
 struct AssetCell: View {
     @Environment(AppModel.self) private var model
     let asset: Asset
+    /// Nil when not selecting.
+    var selected: Bool? = nil
 
     var body: some View {
         Color.clear
@@ -83,10 +94,23 @@ struct AssetCell: View {
                 }
                 .padding(5)
             }
+            .overlay {
+                if selected == true { Theme.accent.opacity(0.25).allowsHitTesting(false) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let selected {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, selected ? Theme.accent : .black.opacity(0.3))
+                        .shadow(radius: 2)
+                        .padding(5)
+                }
+            }
             .contentShape(Rectangle())
             .accessibilityElement()
             .accessibilityLabel(asset.name)
-            .accessibilityAddTraits(.isButton)
+            .accessibilityAddTraits(selected == true ? [.isButton, .isSelected] : .isButton)
             .accessibilityIdentifier("cell-\(asset.name)")
     }
 

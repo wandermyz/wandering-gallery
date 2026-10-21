@@ -238,6 +238,80 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(reload.waitForNonExistence(timeout: 5))
     }
 
+    // parity: GAL-09
+    func testMultiSelectHidesAndTrashes() throws {
+        // Three copies of a seeded image in a folder of their own, first in the folder strip (the dev backend is shared), settled enough to be trashed.
+        let run = Int.random(in: 1000...9999)
+        let lib = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../web/.tmp/ios-dev/comfy-out/0-batch-ui-\(run)")
+        try FileManager.default.createDirectory(at: lib, withIntermediateDirectories: true)
+        let names = (1...3).map { "batch-ui-\(run)-\($0).png" }
+        let source = try Data(contentsOf: lib.appending(path: "../ComfyUI_00002_.png"))
+        for n in names {
+            let file = lib.appending(path: n)
+            try (source + Data(n.utf8)).write(to: file)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -30)], ofItemAtPath: file.path)
+        }
+        defer { try? FileManager.default.removeItem(at: lib) }
+        let cell = { (n: String) in self.app.descendants(matching: .any)["cell-\(n)"] }
+        let cells = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "cell-batch-ui-\(run)-"))
+
+        // Locked, so hidden items leave the grid.
+        if app.buttons["Hidden items are shown"].firstMatch.waitForExistence(timeout: 3) {
+            app.buttons["Hidden items are shown"].firstMatch.tap()
+            app.buttons["lock-now"].tap()
+        }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.staticTexts["ComfyUI Outputs"].tap()
+        let folder = app.buttons["folder-0-batch-ui-\(run)"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 20))
+        folder.tap()
+        XCTAssertTrue(cell(names[2]).waitForExistence(timeout: 20))
+        XCTAssertTrue(cells.element(boundBy: 2).waitForExistence(timeout: 10))
+
+        // A long press starts selecting; taps then toggle instead of opening the viewer.
+        cell(names[0]).press(forDuration: 0.8)
+        XCTAssertTrue(app.navigationBars["1 item selected"].waitForExistence(timeout: 5))
+        cell(names[1]).tap()
+        XCTAssertTrue(app.navigationBars["2 items selected"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["viewer-info"].exists)
+        shot("selecting")
+        app.buttons["select-hide"].tap()
+        XCTAssertTrue(cell(names[0]).waitForNonExistence(timeout: 10))
+        XCTAssertFalse(cell(names[1]).exists)
+        XCTAssertTrue(cell(names[2]).exists)
+
+        // Unlocked, they come back and can be unhidden together.
+        app.buttons["Show hidden items"].firstMatch.tap()
+        let field = app.secureTextFields["passphrase"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("ios dev passphrase\n")
+        XCTAssertTrue(cell(names[0]).waitForExistence(timeout: 15))
+        app.buttons["grid-select"].tap()
+        cell(names[0]).tap()
+        cell(names[1]).tap()
+        XCTAssertEqual(app.buttons["select-hide"].label, "Unhide")
+        app.buttons["select-hide"].tap()
+        XCTAssertTrue(app.buttons["select-hide"].waitForNonExistence(timeout: 10))
+        app.buttons["Hidden items are shown"].firstMatch.tap()
+        app.buttons["lock-now"].tap()
+        XCTAssertTrue(cell(names[0]).waitForExistence(timeout: 15))
+
+        // Select all, move to trash after confirming, then Undo.
+        app.buttons["grid-select"].tap()
+        app.buttons["select-all"].tap()
+        XCTAssertTrue(app.navigationBars["3 items selected"].waitForExistence(timeout: 5))
+        app.buttons["select-trash"].tap()
+        app.buttons.matching(NSPredicate(format: "label == 'Move to trash' AND identifier != 'select-trash'")).firstMatch.tap()
+        XCTAssertTrue(cell(names[0]).waitForNonExistence(timeout: 10))
+        XCTAssertEqual(cells.count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lib.appending(path: names[0]).path))
+        app.buttons["toast-undo"].tap()
+        XCTAssertTrue(cell(names[0]).waitForExistence(timeout: 15))
+        XCTAssertTrue(cells.element(boundBy: 2).waitForExistence(timeout: 10))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lib.appending(path: names[0]).path))
+    }
+
     // parity: TAG-01, GAL-01
     func testTagsAndFolders() {
         app.navigationBars.buttons.element(boundBy: 0).tap()
