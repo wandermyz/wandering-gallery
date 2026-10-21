@@ -199,7 +199,7 @@ private struct RecentJobView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let e = job.error {
-                    Text(e).font(.caption).foregroundStyle(Color(red: 1, green: 0.42, blue: 0.5)).lineLimit(2)
+                    Text(e).font(.caption).foregroundStyle(Theme.favorite).lineLimit(2)
                 } else {
                     Text(DashText.status(job.status) + took).font(.caption).foregroundStyle(.secondary)
                 }
@@ -238,7 +238,7 @@ private struct RecentJobView: View {
             .accessibilityIdentifier("job-thumb")
         } else {
             Image(systemName: job.status == "completed" ? "photo" : "exclamationmark.triangle")
-                .foregroundStyle(job.status == "failed" ? Color(red: 1, green: 0.42, blue: 0.5) : .secondary)
+                .foregroundStyle(job.status == "failed" ? Theme.favorite : .secondary)
                 .frame(width: 44, height: 44)
                 .background(Theme.surface2, in: shape)
         }

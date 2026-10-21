@@ -66,7 +66,7 @@ struct VideoFlowView<Banners: View>: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     .disabled(!state.canRun)
                     .accessibilityIdentifier("generate-start")
                 }

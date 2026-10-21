@@ -30,6 +30,7 @@ never reused.
 | SHELL-02 | Switch between Gallery, Generate and Dashboard, keeping the gallery view | ✅ | untested | |
 | SHELL-03 | Nothing scrolls sideways on narrow and wide screens | ✅ | n/a | |
 | SHELL-04 | Pick the backend server; HTTPS only (plain HTTP just for localhost) | n/a | ✅ | The web app is served by its backend |
+| SHELL-05 | Miku color palette: teal-black surfaces, mint accent, dark text on mint buttons | untested | untested | Values in `web/src/client/styles.css` (`:root`) and iOS `Theme` (`Common/UI.swift`) |
 
 ## Gallery
 

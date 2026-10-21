@@ -51,7 +51,7 @@ private struct DiagramWebView: UIViewRepresentable {
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=10">
         <style>
-        html, body { margin: 0; height: 100%; background: #0b0b0d; color: #ececf1; -webkit-user-select: none; -webkit-touch-callout: none;
+        html, body { margin: 0; height: 100%; background: #050707; color: #f5f8f8; -webkit-user-select: none; -webkit-touch-callout: none;
           font: 15px/1.45 -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; }
         body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
         svg { display: block; flex: none; }
