@@ -11,8 +11,8 @@ struct SlideshowScreen: View {
     /// Called with the slide that was showing when it ends.
     let onExit: (Int) -> Void
 
-    init(list: AssetListModel, client: APIClient, startID: Int, onExit: @escaping (Int) -> Void) {
-        _model = State(initialValue: SlideshowModel(list: list, client: client, startID: startID))
+    init(list: AssetListModel, client: APIClient, startID: Int, pinned: Bool, onExit: @escaping (Int) -> Void) {
+        _model = State(initialValue: SlideshowModel(list: list, client: client, startID: startID, pinned: pinned))
         self.onExit = onExit
     }
 
@@ -21,7 +21,9 @@ struct SlideshowScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if model.current == nil {
+            if model.loading {
+                ProgressView().tint(.white)
+            } else if model.current == nil {
                 VStack(spacing: 12) {
                     Text("Nothing to show: the slideshow plays images and videos.")
                         .multilineTextAlignment(.center)
@@ -54,8 +56,13 @@ struct SlideshowScreen: View {
             hideTask?.cancel()
         }
         .onChange(of: model.playing) { poke() }
+        .task { await model.begin() }
         .focusable()
         .focusEffectDisabled()
+        .onKeyPress(characters: CharacterSet(charactersIn: "s")) { _ in
+            model.toggleShuffle()
+            return .handled
+        }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .escape, .space]) { press in
             switch press.key {
             case .leftArrow: model.go(-1)
@@ -168,6 +175,13 @@ struct SlideshowScreen: View {
             }
             .accessibilityLabel("Seconds per slide: \(model.interval)")
             .accessibilityIdentifier("slideshow-interval")
+            Button { model.toggleShuffle(); poke() } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(model.shuffle ? Theme.accent : .white)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(model.shuffle ? "Shuffle on" : "Shuffle off")
+            .accessibilityIdentifier("slideshow-shuffle")
             if model.current?.kind == .video {
                 Button { model.muted.toggle() } label: {
                     Image(systemName: model.muted ? "speaker.slash.fill" : "speaker.wave.2.fill").frame(width: 44, height: 44)

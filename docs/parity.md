@@ -67,6 +67,7 @@ never reused.
 | --- | --- | --- | --- | --- |
 | SLIDE-01 | Slideshow of the current view (from the gallery, or the viewer's open item): full screen, images on a timer (3–30 s), videos play through, crossfades, pause, previous/next, loops at the end; exiting into the viewer lands on the last slide | ✅ | ✅ | |
 | SLIDE-02 | On an external display (AirPlay, HDMI) the slideshow fills that screen and the device becomes its remote; mirroring otherwise | n/a | untested | The browser has no second screen of its own. iOS: the simulator here can't attach a display (no Simulator.app), so it was checked by building only; try it with AirPlay or a USB-C/HDMI adapter |
+| SLIDE-03 | Shuffle: the whole view in a random order (from the server, page by page), the slide showing first; remembered | ✅ | ✅ | Server: `/api/assets?order=random&seed=N` |
 
 ## Details
 

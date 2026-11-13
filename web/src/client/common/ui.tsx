@@ -17,6 +17,7 @@ const PATHS: Record<string, string> = {
   filter: 'M4 6h16M7 12h10M10 18h4',
   folder: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   play: 'M8 5.5v13l11-6.5z',
+  shuffle: 'M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5',
   pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
   slideshow: 'M3 5h18v12H3zM10.5 8.5v5l4-2.5zM8 21h8',
   fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',

@@ -1064,6 +1064,9 @@ export default function GalleryApp() {
           startId={slideshow.start}
           hasMore={list.hasMore}
           onNeedMore={() => void list.loadMore()}
+          query={q}
+          filter={needle ? (a) => a.name.toLowerCase().includes(needle) : undefined}
+          pinned={slideshow.fromViewer}
           onExit={exitSlideshow}
         />
       )}

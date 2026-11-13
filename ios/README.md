@@ -13,7 +13,7 @@ server's JSON API (`/api/*`) and covers every section of the web app:
   move to trash (asks first), copy the path, share or save the original, and send an image
   to the video flow. On iPad with a keyboard: ← →, F, 0–5, I, Delete and Esc.
 - **Slideshow** of the grid's view (the toolbar on iPad, the filter sheet on iPhone) or from the viewer's open item: crossfading
-  images every 3–30 s, videos played through, pause, previous / next, swipe, and the
+  images every 3–30 s, videos played through, in order or shuffled, pause, previous / next, swipe, and the
   screen kept awake. With an external display (AirPlay, or HDMI / USB-C) connected, the
   slides fill that screen and the phone shows the controls. Without a slideshow running,
   the display mirrors the phone as usual.

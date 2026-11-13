@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { displayUrl, fileUrl, thumbUrl, type Asset } from './api';
-import { IconButton } from '../common/ui';
+import { api, displayUrl, fileUrl, thumbUrl, type Asset, type Query } from './api';
+import { IconButton, Spinner } from '../common/ui';
 import { cx, formatDate } from '../common/util';
 
 /** Seconds each image stays on screen; a video plays through (looping until at least this long). */
 export const SLIDESHOW_INTERVALS = [3, 5, 10, 20, 30];
 const INTERVAL_KEY = 'wg.slideshow.interval';
+const SHUFFLE_KEY = 'wg.slideshow.shuffle';
 const CONTROLS_HIDE_MS = 2800;
 
 /** Images and videos the browser can play; audio and documents are skipped. */
@@ -18,6 +19,12 @@ export interface SlideshowProps {
   startId: number;
   hasMore: boolean;
   onNeedMore: () => void;
+  /** The view's query, for the shuffled order (fetched from the server, all of the view). */
+  query: Query;
+  /** Narrows the shuffled items like the view (the filename filter). */
+  filter?: (a: Asset) => boolean;
+  /** Started on an item (from the viewer): shuffled, it still comes first. */
+  pinned: boolean;
   /** Leaves the slideshow; `id` is the slide that was showing. */
   onExit: (id: number) => void;
 }
@@ -33,14 +40,71 @@ function seek(items: Asset[], from: number, dir: 1 | -1) {
   return -1;
 }
 
+/**
+ * The view in a random order, page by page (`order=random` with a seed). The slide showing
+ * when it's turned on (`head`) stays first.
+ */
+function useShuffled(query: Query, filter: ((a: Asset) => boolean) | undefined, on: boolean, head: () => Asset | null) {
+  const [st, setSt] = useState<{ items: Asset[]; next: string | null; loaded: boolean }>({ items: [], next: null, loaded: false });
+  const run = useRef({ gen: 0, seed: 0, loading: false });
+  const keep = (list: Asset[]) => (filter ? list.filter(filter) : list);
+  useEffect(() => {
+    if (!on) return;
+    const r = run.current;
+    const gen = ++r.gen;
+    r.seed = Math.floor(Math.random() * 2 ** 31);
+    r.loading = true;
+    const first = head();
+    setSt({ items: first ? [first] : [], next: null, loaded: false });
+    api.assets({ ...query, order: 'random', seed: r.seed }, null, 120)
+      .then((page) => {
+        if (gen !== r.gen) return;
+        const items = keep(page.items).filter((a) => a.id !== first?.id);
+        setSt({ items: first ? [first, ...items] : items, next: page.next, loaded: true });
+      })
+      .catch(() => gen === r.gen && setSt((s) => ({ ...s, loaded: true })))
+      .finally(() => { if (gen === r.gen) r.loading = false; });
+    return () => { r.gen++; };
+  }, [on]);
+  const loadMore = () => {
+    const r = run.current;
+    if (!on || !st.next || r.loading) return;
+    const gen = r.gen;
+    r.loading = true;
+    api.assets({ ...query, order: 'random', seed: r.seed }, st.next, 240)
+      .then((page) => {
+        if (gen !== r.gen) return;
+        setSt((s) => {
+          const seen = new Set(s.items.map((a) => a.id));
+          return { items: [...s.items, ...keep(page.items).filter((a) => !seen.has(a.id))], next: page.next, loaded: true };
+        });
+      })
+      .catch(() => {})
+      .finally(() => { if (gen === r.gen) r.loading = false; });
+  };
+  return { items: st.items, hasMore: !!st.next, loaded: st.loaded, loadMore };
+}
+
 export function Slideshow(props: SlideshowProps) {
-  const { items } = props;
+  const [shuffle, setShuffle] = useState(() => localStorage.getItem(SHUFFLE_KEY) === '1');
   const [current, setCurrent] = useState<Asset | null>(() => {
-    const at = items.findIndex((a) => a.id === props.startId);
-    let i = seek(items, Math.max(0, at), 1);
-    if (i < 0) i = seek(items, 0, 1);
-    return i >= 0 ? items[i] : null;
+    // Shuffled from the gallery, the first slide is a random one (once it's fetched).
+    if (shuffle && !props.pinned) return null;
+    const list = props.items;
+    const at = list.findIndex((a) => a.id === props.startId);
+    let i = seek(list, Math.max(0, at), 1);
+    if (i < 0) i = seek(list, 0, 1);
+    return i >= 0 ? list[i] : null;
   });
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  const shuffled = useShuffled(props.query, props.filter, shuffle, () => currentRef.current);
+  // Where the slides come from: the gallery's list as loaded, or the shuffled one.
+  const src = shuffle
+    ? { items: shuffled.items, hasMore: shuffled.hasMore, onNeedMore: shuffled.loadMore }
+    : { items: props.items, hasMore: props.hasMore, onNeedMore: props.onNeedMore };
+  const items = src.items;
+  const waiting = shuffle && !shuffled.loaded && !current;
   /** The previous slide, kept under the new one while it fades in. */
   const [under, setUnder] = useState<Asset | null>(null);
   const [ready, setReady] = useState(false);
@@ -56,8 +120,8 @@ export function Slideshow(props: SlideshowProps) {
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const state = useRef({ props, current, playing });
-  state.current = { props, current, playing };
+  const state = useRef({ props, src, current, playing });
+  state.current = { props, src, current, playing };
 
   const index = current ? items.findIndex((a) => a.id === current.id) : -1;
   // A slide removed from the list meanwhile (moved to trash elsewhere) keeps showing until the next one.
@@ -80,7 +144,7 @@ export function Slideshow(props: SlideshowProps) {
   };
 
   const go = (dir: 1 | -1) => {
-    const { props: p, current: cur } = state.current;
+    const { src: p, current: cur } = state.current;
     const list = p.items;
     const at = cur ? list.findIndex((a) => a.id === cur.id) : -1;
     const from = at >= 0 ? at + dir : dir === 1 ? lastIndex.current : lastIndex.current - 1;
@@ -100,13 +164,31 @@ export function Slideshow(props: SlideshowProps) {
 
   // Load the next page before reaching the end.
   useEffect(() => {
-    if (props.hasMore && index >= items.length - 6) props.onNeedMore();
-  }, [index, items.length, props.hasMore]);
+    if (src.hasMore && index >= items.length - 6) src.onNeedMore();
+  }, [index, items.length, src.hasMore, shuffle]);
   useEffect(() => {
     if (!waitingForMore.current) return;
     waitingForMore.current = false;
     go(1);
-  }, [items.length, props.hasMore]);
+  }, [items.length, src.hasMore]);
+  // Shuffled from the gallery: the first random slide once the first page is in.
+  useEffect(() => {
+    if (shuffle && shuffled.loaded && !current) {
+      const i = seek(items, 0, 1);
+      if (i >= 0) show(items[i]);
+    }
+  }, [shuffled.loaded]);
+
+  const toggleShuffleRef = useRef(() => {});
+  const toggleShuffle = () => {
+    const on = !shuffle;
+    setShuffle(on);
+    localStorage.setItem(SHUFFLE_KEY, on ? '1' : '0');
+    waitingForMore.current = false;
+    // Back in the gallery's order, a slide that isn't in its loaded list continues from the top.
+    lastIndex.current = 0;
+  };
+  toggleShuffleRef.current = toggleShuffle;
 
   // Fetch the next image ahead, so it can fade in as soon as its turn comes.
   useEffect(() => {
@@ -187,6 +269,10 @@ export function Slideshow(props: SlideshowProps) {
           e.preventDefault();
           go(-1);
           break;
+        case 's':
+        case 'S':
+          toggleShuffleRef.current();
+          break;
         case 'm':
         case 'M':
           setMuted((m) => !m);
@@ -258,7 +344,7 @@ export function Slideshow(props: SlideshowProps) {
     }
   };
 
-  const count = index >= 0 ? `${index + 1}${props.hasMore ? '' : ` / ${items.length}`}` : '';
+  const count = index >= 0 ? `${index + 1}${src.hasMore ? '' : ` / ${items.length}`}` : '';
   const timed = playing && current?.kind === 'image';
 
   return (
@@ -272,7 +358,9 @@ export function Slideshow(props: SlideshowProps) {
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
     >
-      {!current ? (
+      {waiting ? (
+        <div class="ss-empty"><Spinner /></div>
+      ) : !current ? (
         <div class="ss-empty">
           <p>Nothing to show: the slideshow plays images and videos.</p>
           <button type="button" class="btn" onClick={exit}>Close</button>
@@ -319,6 +407,13 @@ export function Slideshow(props: SlideshowProps) {
         <button type="button" class="btn btn-sm ss-interval" aria-label={`Seconds per slide: ${interval}`} title="Seconds per slide" onClick={cycleInterval}>
           {interval}s
         </button>
+        <IconButton
+          icon="shuffle"
+          label={shuffle ? 'Shuffle on' : 'Shuffle off'}
+          active={shuffle}
+          aria-pressed={shuffle}
+          onClick={toggleShuffle}
+        />
         {current?.kind === 'video' && (
           <IconButton icon={muted ? 'mute' : 'volume'} label={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted((m) => !m)} />
         )}

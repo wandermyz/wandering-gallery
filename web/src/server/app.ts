@@ -17,6 +17,16 @@ import { ensurePreview, ensureThumb } from './thumbs.js';
 import { Trash } from './trash.js';
 import { Unlock } from './unlock.js';
 
+/**
+ * A pseudo-random sort key for an id under a seed (a multiply-xorshift-multiply hash, kept
+ * within SQLite's 64-bit integers): different seeds give unrelated orders.
+ */
+function shuffleKey(id: string, seed: number) {
+  const h = `((${id} * 2654435761 + ${seed}) % 4294967296)`;
+  const x = `((${h} | (${h} >> 15)) - (${h} & (${h} >> 15)))`;
+  return `((${x} * 1597334677) % 4294967296)`;
+}
+
 export interface AppDeps {
   cfg: AppConfig;
   db: Db;
@@ -356,17 +366,36 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     const asc = q.order === 'asc';
     const limit = intParam(q.limit, 'limit', 1, PAGE_MAX, 120);
-    if (q.cursor) {
-      const m = /^(\d+)_(\d+)$/.exec(q.cursor);
-      if (!m) throw new HttpError('invalid cursor', 400);
-      where.push(asc ? '(mtime_ms > ? OR (mtime_ms = ? AND id > ?))' : '(mtime_ms < ? OR (mtime_ms = ? AND id < ?))');
-      params.push(Number(m[1]), Number(m[1]), Number(m[2]));
+    let rows: AssetRow[];
+    let nextCursor: (last: AssetRow, n: number) => string;
+    if (q.order === 'random') {
+      // A shuffle that pages: the same seed gives the same order, and the cursor is an offset.
+      const seed = intParam(q.seed, 'seed', 0, 2 ** 31 - 1, 0);
+      let offset = 0;
+      if (q.cursor) {
+        const m = /^r(\d+)$/.exec(q.cursor);
+        if (!m) throw new HttpError('invalid cursor', 400);
+        offset = Number(m[1]);
+      }
+      rows = db.all<AssetRow>(
+        `${CAPTION_JOIN} WHERE ${where.join(' AND ')} ORDER BY ${shuffleKey('assets.id', seed)}, assets.id LIMIT ? OFFSET ?`,
+        ...params, limit + 1, offset,
+      );
+      nextCursor = (_last, n) => `r${offset + n}`;
+    } else {
+      if (q.cursor) {
+        const m = /^(\d+)_(\d+)$/.exec(q.cursor);
+        if (!m) throw new HttpError('invalid cursor', 400);
+        where.push(asc ? '(mtime_ms > ? OR (mtime_ms = ? AND id > ?))' : '(mtime_ms < ? OR (mtime_ms = ? AND id < ?))');
+        params.push(Number(m[1]), Number(m[1]), Number(m[2]));
+      }
+      const dir = asc ? 'ASC' : 'DESC';
+      rows = db.all<AssetRow>(
+        `${CAPTION_JOIN} WHERE ${where.join(' AND ')} ORDER BY mtime_ms ${dir}, id ${dir} LIMIT ?`,
+        ...params, limit + 1,
+      );
+      nextCursor = (last) => `${last.mtime_ms}_${last.id}`;
     }
-    const dir = asc ? 'ASC' : 'DESC';
-    const rows = db.all<AssetRow>(
-      `${CAPTION_JOIN} WHERE ${where.join(' AND ')} ORDER BY mtime_ms ${dir}, id ${dir} LIMIT ?`,
-      ...params, limit + 1,
-    );
     const more = rows.length > limit;
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
@@ -378,7 +407,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     return {
       items: page.map((r) => toJson(req, r)),
-      next: more && last ? `${last.mtime_ms}_${last.id}` : null,
+      next: more && last ? nextCursor(last, page.length) : null,
       total,
     };
   });

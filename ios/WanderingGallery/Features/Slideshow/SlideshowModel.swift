@@ -8,10 +8,19 @@ import SwiftUI
 final class SlideshowModel {
     static let intervals = [3, 5, 10, 20, 30]
     private static let intervalKey = "slideshowInterval"
+    private static let shuffleKey = "slideshowShuffle"
 
-    let list: AssetListModel
+    /// The grid's list.
+    let base: AssetListModel
     let client: APIClient
     let startID: Int
+    /// Started on an item (from the viewer): shuffled, it still comes first.
+    let pinned: Bool
+    /// Where the slides come from: the grid's list, or the view shuffled.
+    private(set) var list: AssetListModel
+    private(set) var shuffle: Bool
+    /// Fetching the shuffled order before the first slide.
+    private(set) var loading = false
 
     private(set) var current: Asset?
     private(set) var playing = true
@@ -32,12 +41,20 @@ final class SlideshowModel {
         a.status == "ready" && (a.kind == .image || (a.kind == .video && a.playable != "no"))
     }
 
-    init(list: AssetListModel, client: APIClient, startID: Int) {
+    init(list: AssetListModel, client: APIClient, startID: Int, pinned: Bool) {
+        base = list
         self.list = list
         self.client = client
         self.startID = startID
+        self.pinned = pinned
         let saved = UserDefaults.standard.integer(forKey: Self.intervalKey)
         interval = Self.intervals.contains(saved) ? saved : 5
+        shuffle = UserDefaults.standard.bool(forKey: Self.shuffleKey)
+        if shuffle && !pinned {
+            // Shuffled from the grid, the first slide is a random one, once it's fetched.
+            loading = true
+            return
+        }
         let items = list.items
         let at = items.firstIndex { $0.id == startID } ?? 0
         current = items[at...].first(where: Self.eligible) ?? items.first(where: Self.eligible)
@@ -52,15 +69,73 @@ final class SlideshowModel {
         return list.hasMore ? "\(i + 1)" : "\(i + 1) / \(list.items.count)"
     }
 
+    /// Fetches the shuffled order when the slideshow starts shuffled.
+    func begin() async {
+        guard shuffle else { return }
+        await useShuffled()
+        loading = false
+        if current == nil, let first = list.items.first(where: Self.eligible) ?? base.items.first(where: Self.eligible) {
+            current = first
+            restartClock()
+        }
+    }
+
+    func toggleShuffle() {
+        shuffle.toggle()
+        UserDefaults.standard.set(shuffle, forKey: Self.shuffleKey)
+        stepping?.cancel()
+        stepping = nil
+        queued = 0
+        if shuffle {
+            Task { await useShuffled() }
+        } else {
+            list = base
+            // A slide that isn't in the grid's loaded list continues from the top.
+            lastIndex = 0
+        }
+    }
+
+    /// The view in a random order (a new one each time), the current slide first. A fixed
+    /// list (the filename filter's matches) is shuffled here; a query by the server, all of it.
+    private func useShuffled() async {
+        let shuffled: AssetListModel
+        if base.fixed {
+            shuffled = AssetListModel(client: client, query: base.query)
+            shuffled.setItems(base.items.shuffled())
+        } else {
+            var q = base.query
+            q.shuffleSeed = Int.random(in: 0..<Int(Int32.max))
+            shuffled = AssetListModel(client: client, query: q)
+            await shuffled.reload()
+            guard !Task.isCancelled, shuffle else { return }
+            // Couldn't fetch it: the grid's order rather than nothing.
+            if shuffled.items.isEmpty { return }
+        }
+        if let current { shuffled.prepend(current) }
+        list = shuffled
+    }
+
     func stop() {
         stopped = true
         timer?.cancel()
         stepping?.cancel()
+        queued = 0
     }
 
+    /// Steps asked for while one is still loading its image: each tap counts.
+    private var queued = 0
+
     func go(_ dir: Int) {
-        stepping?.cancel()
-        stepping = Task { await step(dir) }
+        queued += dir
+        guard stepping == nil else { return }
+        stepping = Task {
+            while queued != 0, !Task.isCancelled {
+                let d = queued > 0 ? 1 : -1
+                queued -= d
+                await step(d)
+            }
+            if !Task.isCancelled { stepping = nil }
+        }
     }
 
     func togglePlay() {

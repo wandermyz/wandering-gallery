@@ -21,6 +21,8 @@ nonisolated struct AssetQuery: Hashable, Sendable {
     var caption: CaptionFilter?
     var tag: String?
     var ascending = false
+    /// Set: the whole view in a random order, the same for the same seed (the slideshow's shuffle).
+    var shuffleSeed: Int?
 
     func items(cursor: String?, limit: Int) -> [URLQueryItem] {
         var q: [URLQueryItem] = []
@@ -35,7 +37,10 @@ nonisolated struct AssetQuery: Hashable, Sendable {
         add("kind", kind?.rawValue)
         add("caption", caption?.rawValue)
         add("tag", tag)
-        if ascending { add("order", "asc") }
+        if let shuffleSeed {
+            add("order", "random")
+            add("seed", String(shuffleSeed))
+        } else if ascending { add("order", "asc") }
         add("cursor", cursor)
         add("limit", String(limit))
         return q

@@ -822,3 +822,56 @@ test('slideshow plays the view full screen, advancing on a timer, and returns wh
   await expect(page.locator('.slideshow')).toHaveCount(0);
   await expect(page.locator('.viewer-name')).toHaveText(second!);
 });
+
+// parity: SLIDE-03
+test('the slideshow can shuffle the whole view, and remembers it', async ({ page }) => {
+  await openGallery(page);
+  await page.evaluate(() => { localStorage.setItem('wg.slideshow.shuffle', '0'); localStorage.setItem('wg.slideshow.interval', '30'); });
+  const first = (await page.locator('.cell.loaded').first().getAttribute('aria-label'))!;
+  const name = page.locator('.slideshow .viewer-name');
+  const start = async () => {
+    const topbarButton = page.getByRole('button', { name: 'Slideshow', exact: true });
+    if (await topbarButton.isVisible()) await topbarButton.click();
+    else {
+      await page.getByRole('button', { name: 'Filter and view options' }).click();
+      await page.getByRole('button', { name: 'Play slideshow' }).click();
+    }
+    await expect(page.locator('.slideshow')).toBeVisible();
+  };
+  const run = async (n: number) => {
+    const seen = [(await name.textContent())!];
+    for (let i = 1; i < n; i++) {
+      await page.getByRole('button', { name: 'Next' }).click();
+      await expect(name).not.toHaveText(seen[seen.length - 1]);
+      seen.push((await name.textContent())!);
+    }
+    return seen;
+  };
+
+  await start();
+  await page.getByRole('button', { name: 'Pause' }).click();
+  // Turned on, it fetches the view in a random order, keeping the current slide first.
+  const random = page.waitForRequest((r) => r.url().includes('order=random'));
+  await page.getByRole('button', { name: 'Shuffle off' }).click();
+  await random;
+  await expect(page.getByRole('button', { name: 'Shuffle on' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('wg.slideshow.shuffle'))).toBe('1');
+  const shuffled = await run(6);
+  expect(new Set(shuffled).size).toBe(6);
+  // Not the gallery's order (what Next steps through with shuffle off).
+  const all = (await (await page.request.get('/api/assets?limit=500')).json()).items as { name: string; kind: string }[];
+  const inOrder = all.filter((a) => a.kind === 'image' || a.kind === 'video').map((a) => a.name);
+  const at = inOrder.indexOf(shuffled[0]);
+  expect(shuffled).not.toEqual(inOrder.slice(at, at + 6));
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('.slideshow')).toHaveCount(0);
+  // Remembered: started from the viewer it begins on the open item, then goes on at random.
+  await openAsset(page, first);
+  await page.getByRole('button', { name: 'Start slideshow' }).click();
+  await expect(name).toHaveText(first);
+  await expect(page.getByRole('button', { name: 'Shuffle on' })).toBeVisible();
+  await page.getByRole('button', { name: 'Shuffle on' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('wg.slideshow.shuffle'))).toBe('0');
+  await page.keyboard.press('Escape');
+});

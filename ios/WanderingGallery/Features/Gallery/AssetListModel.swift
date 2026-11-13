@@ -91,10 +91,18 @@ final class AssetListModel {
     }
 
     /// A fixed list (no query behind it).
+    private(set) var fixed = false
+
     func setItems(_ items: [Asset]) {
+        fixed = true
         self.items = items
         total = items.count
         loaded = true
+    }
+
+    /// Puts an item first (taking it out of where it was).
+    func prepend(_ a: Asset) {
+        items = [a] + items.filter { $0.id != a.id }
     }
 
     func patch(_ a: Asset) {

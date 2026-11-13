@@ -106,7 +106,7 @@ struct ViewerScreen: View {
         .errorAlert($error)
         .sheet(item: $shareItem) { item in ShareSheet(items: [item.url]) }
         .fullScreenCover(item: Binding(get: { slideshow.map(SlideshowStartID.init) }, set: { slideshow = $0?.id })) { start in
-            SlideshowScreen(list: list, client: model.client, startID: start.id) { last in
+            SlideshowScreen(list: list, client: model.client, startID: start.id, pinned: true) { last in
                 // Back in the viewer on the slide it ended on.
                 if list.items.contains(where: { $0.id == last }) { currentID = last }
             }

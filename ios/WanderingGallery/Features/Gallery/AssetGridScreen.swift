@@ -99,7 +99,7 @@ struct AssetGridScreen: View {
                 }
             }
             .fullScreenCover(item: $slideshow) { start in
-                SlideshowScreen(list: start.list, client: model.client, startID: start.id) { _ in }
+                SlideshowScreen(list: start.list, client: model.client, startID: start.id, pinned: false) { _ in }
             }
             .task(id: TaskKey(query: query, epoch: model.visibilityEpoch)) {
                 let l = AssetListModel(client: model.client, query: query)
