@@ -791,3 +791,48 @@ video.media { width: 100%; height: 100%; background: #000; }
 .dash-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0 0; font-size: 14px; }
 .dash-dl dt { color: var(--muted); }
 .dash-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---- Slideshow ---------------------------------------------------------------- */
+.slideshow {
+  position: fixed; inset: 0; z-index: 45; background: #000; overflow: hidden;
+  touch-action: none; overscroll-behavior: contain; -webkit-user-select: none; user-select: none;
+  animation: fade .2s ease;
+}
+.slideshow.controls-hidden { cursor: none; }
+.ss-slide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.ss-slide.ss-top-layer { opacity: 0; transition: opacity .7s ease; }
+.ss-slide.ss-top-layer.in { opacity: 1; }
+.ss-media { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; display: block; background: transparent; }
+.ss-bar {
+  position: absolute; left: 0; right: 0; display: flex; align-items: center; z-index: 2;
+  transition: opacity .25s ease, transform .25s ease;
+}
+.slideshow.controls-hidden .ss-bar { opacity: 0; pointer-events: none; }
+.slideshow.controls-hidden .ss-top { transform: translateY(-8px); }
+.slideshow.controls-hidden .ss-bottom { transform: translateY(8px); }
+.ss-top {
+  top: 0; gap: 4px;
+  padding: calc(4px + var(--safe-t)) calc(12px + var(--safe-r)) 28px calc(4px + var(--safe-l));
+  background: linear-gradient(rgba(0, 0, 0, .7), rgba(0, 0, 0, 0));
+}
+.ss-bottom {
+  bottom: 0; justify-content: center; gap: 8px;
+  padding: 32px calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l));
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .7));
+}
+.ss-play { width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, .12); }
+.ss-interval { min-width: 48px; font-variant-numeric: tabular-nums; }
+.ss-progress {
+  position: absolute; left: 0; bottom: 0; height: 3px; z-index: 3; width: 100%;
+  background: var(--accent); opacity: .75; transform-origin: 0 50%;
+  animation: ss-progress linear forwards;
+}
+.slideshow.controls-hidden .ss-progress { opacity: .35; }
+@keyframes ss-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.ss-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 24px; text-align: center; color: var(--muted);
+}
+html.slideshow-open, html.slideshow-open body { overflow: hidden; }
+/* The topbar's slideshow button makes way for the title on phones (it's in the filter sheet). */
+@media (max-width: 479px) { .icon-btn.wide-only { display: none; } }

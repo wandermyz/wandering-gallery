@@ -330,6 +330,117 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["cell-the-harbor.md"].waitForExistence(timeout: 10))
         shot("folder")
     }
+
+    /// On iPad it's in the toolbar; a phone's is in the filter sheet.
+    private func startSlideshowFromGrid() {
+        let filters = app.buttons["grid-filters"]
+        XCTAssertTrue(filters.waitForHittable(timeout: 15))
+        if app.buttons["grid-slideshow"].exists {
+            app.buttons["grid-slideshow"].tap()
+        } else {
+            filters.tap()
+            let play = app.buttons["filters-slideshow"]
+            XCTAssertTrue(play.waitForExistence(timeout: 5))
+            play.tap()
+        }
+    }
+
+    // parity: SLIDE-03
+    func testSlideshowShuffle() {
+        app.terminate()
+        app.launchArguments += ["-slideshowInterval", "30"]
+        app.launch()
+        startSlideshowFromGrid()
+        let title = app.staticTexts["slideshow-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        app.buttons["slideshow-play"].tap()
+        let shuffle = app.buttons["slideshow-shuffle"]
+        if shuffle.label == "Shuffle on" { shuffle.tap() }
+        XCTAssertEqual(shuffle.label, "Shuffle off")
+        func steps(_ n: Int) -> [String] {
+            var seen = [title.label]
+            for _ in 1..<n {
+                app.buttons["slideshow-next"].tap()
+                XCTAssertTrue(title.waitForLabel(not: seen.last!))
+                seen.append(title.label)
+            }
+            return seen
+        }
+        // In the grid's order, then back to where it began.
+        let inOrder = steps(6)
+        for _ in 1..<6 { app.buttons["slideshow-previous"].tap() }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", inOrder[0]), object: title)], timeout: 5), .completed)
+        // Shuffled: the slide showing stays, then others at random (the whole view, from the server).
+        shuffle.tap()
+        XCTAssertEqual(shuffle.label, "Shuffle on")
+        sleep(1)
+        let shuffled = steps(6)
+        shot("slideshow-shuffled")
+        XCTAssertEqual(shuffled[0], inOrder[0])
+        XCTAssertEqual(Set(shuffled).count, 6)
+        XCTAssertNotEqual(shuffled, inOrder)
+        app.buttons["slideshow-exit"].tap()
+
+        // Remembered for the next slideshow; turned off again.
+        startSlideshowFromGrid()
+        XCTAssertTrue(shuffle.waitForExistence(timeout: 10))
+        XCTAssertEqual(shuffle.label, "Shuffle on")
+        app.buttons["slideshow-play"].tap()
+        shuffle.tap()
+        XCTAssertEqual(shuffle.label, "Shuffle off")
+        app.buttons["slideshow-exit"].tap()
+    }
+
+    // parity: SLIDE-01
+    func testSlideshowFromGridAndViewer() {
+        // The shortest interval (the setting's own default, through the arguments domain).
+        app.terminate()
+        app.launchArguments += ["-slideshowInterval", "3", "-slideshowShuffle", "NO"]
+        app.launch()
+        startSlideshowFromGrid()
+        let title = app.staticTexts["slideshow-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let first = title.label
+        XCTAssertEqual(app.buttons["slideshow-interval"].label, "Seconds per slide: 3")
+        // It moves on by itself.
+        let slide = app.descendants(matching: .any).matching(identifier: "slideshow-slide").firstMatch
+        XCTAssertTrue(slide.waitForExistence(timeout: 5))
+        shot("slideshow")
+        XCTAssertTrue(slide.waitForLabel(not: first, timeout: 12))
+
+        // The controls have faded away; a tap brings them back. Paused, it stays put.
+        if !app.buttons["slideshow-play"].isHittable { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        XCTAssertTrue(app.buttons["slideshow-play"].waitForHittable())
+        app.buttons["slideshow-play"].tap()
+        XCTAssertEqual(app.buttons["slideshow-play"].label, "Play")
+        let second = title.label
+        XCTAssertNotEqual(second, first)
+        sleep(4)
+        XCTAssertEqual(title.label, second)
+        // Previous and Next still step.
+        app.buttons["slideshow-next"].tap()
+        XCTAssertTrue(title.waitForLabel(not: second))
+        app.buttons["slideshow-previous"].tap()
+        let back = NSPredicate(format: "label == %@", second)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: back, object: title)], timeout: 5), .completed)
+        app.buttons["slideshow-exit"].tap()
+        XCTAssertTrue(app.buttons["grid-filters"].waitForExistence(timeout: 5))
+
+        // From the viewer: starts at the open item, and the viewer follows it to where it ended.
+        openFirstImage()
+        let open = app.staticTexts["viewer-title"].label
+        app.buttons["viewer-slideshow"].tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.label, open)
+        app.buttons["slideshow-play"].tap()
+        app.buttons["slideshow-next"].tap()
+        XCTAssertTrue(title.waitForLabel(not: open))
+        let last = title.label
+        app.buttons["slideshow-exit"].tap()
+        let viewerTitle = app.staticTexts["viewer-title"]
+        XCTAssertTrue(viewerTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(viewerTitle.label, last)
+    }
 }
 
 extension XCUIElement {

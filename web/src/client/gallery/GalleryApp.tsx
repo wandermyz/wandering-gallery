@@ -4,6 +4,7 @@ import { api, ApiError, fetchSession, fileUrl, thumbUrl, type Asset, type Captio
 import { Grid, type Density } from './Grid';
 import { loadTags, TagsView } from './Tags';
 import { Viewer } from './Viewer';
+import { inSlideshow, Slideshow } from './Slideshow';
 import { ConfirmDialog, Icon, IconButton, Sheet, Spinner, Stars, Toasts, type ConfirmOptions, type ToastMsg } from '../common/ui';
 import { CAPTION_EVENT, cx, formatBytes, formatDate, LOCK_EVENT } from '../common/util';
 import { SectionSwitcher } from '../shell/nav';
@@ -391,6 +392,24 @@ export default function GalleryApp() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // ---- Slideshow: over the gallery, or in place of the viewer it was started from ----------
+  const [slideshow, setSlideshow] = useState<{ start: number; fromViewer: boolean } | null>(null);
+  const canSlideshow = useMemo(() => shown.some(inSlideshow), [shown]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('slideshow-open', !!slideshow);
+  }, [!!slideshow]);
+  useEffect(() => () => document.documentElement.classList.remove('slideshow-open'), []);
+  // Leaving the gallery view (browser back to another view) ends it.
+  useEffect(() => {
+    if (route.view !== 'gallery') setSlideshow(null);
+  }, [route.view]);
+  const exitSlideshow = (id: number) => {
+    const from = slideshow;
+    setSlideshow(null);
+    if (from?.fromViewer && readRoute().asset) nav({ asset: id }, 'replace');
+    else setFocusId(id);
+  };
+
   // Lock page scroll while the viewer is open.
   useEffect(() => {
     document.documentElement.classList.toggle('viewer-open', !!route.asset);
@@ -742,6 +761,13 @@ export default function GalleryApp() {
             />
             <IconButton icon="filter" label="Filter and view options" active={filtersActive} onClick={() => setFilters(true)} />
             <IconButton icon="check" label="Select items" disabled={!shown.length} onClick={startSelecting} />
+            <IconButton
+              icon="slideshow"
+              label="Slideshow"
+              class="wide-only"
+              disabled={!canSlideshow}
+              onClick={() => setSlideshow({ start: shown[0].id, fromViewer: false })}
+            />
           </>
         )}
         {hiddenEnabled && (
@@ -1014,6 +1040,17 @@ export default function GalleryApp() {
             ))}
           </div>
         </div>
+        <button
+          type="button"
+          class="btn btn-block"
+          disabled={!canSlideshow}
+          onClick={() => {
+            setFilters(false);
+            setSlideshow({ start: shown[0].id, fromViewer: false });
+          }}
+        >
+          <Icon name="slideshow" size={18} /> Play slideshow
+        </button>
         {filtersActive && (
           <button type="button" class="btn btn-block" onClick={() => nav({ favorite: false, minRating: 0, kind: '', caption: '', order: 'desc', flat: false }, 'replace')}>
             Reset filters
@@ -1021,7 +1058,20 @@ export default function GalleryApp() {
         )}
       </Sheet>
 
-      {route.asset !== null && route.view === 'gallery' && (
+      {slideshow && route.view === 'gallery' && (
+        <Slideshow
+          items={shown}
+          startId={slideshow.start}
+          hasMore={list.hasMore}
+          onNeedMore={() => void list.loadMore()}
+          query={q}
+          filter={needle ? (a) => a.name.toLowerCase().includes(needle) : undefined}
+          pinned={slideshow.fromViewer}
+          onExit={exitSlideshow}
+        />
+      )}
+
+      {route.asset !== null && route.view === 'gallery' && !slideshow && (
         list.loading && !list.items.length ? (
           <div class="viewer"><Spinner /></div>
         ) : (
@@ -1043,6 +1093,7 @@ export default function GalleryApp() {
             onOpenTag={openTag}
             onOpenAsset={(id) => nav({ asset: id })}
             writable={(a) => !!libById.get(a.library)?.writable}
+            onSlideshow={(a) => (inSlideshow(a) || canSlideshow) && setSlideshow({ start: a.id, fromViewer: true })}
             libName={(id) => libById.get(id)?.name ?? id}
           />
         )

@@ -3,6 +3,8 @@ import SwiftUI
 
 @main
 struct WanderingGalleryApp: App {
+    /// Gives external displays to the slideshow (`ExternalDisplaySceneDelegate`).
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var servers = ServerStore()
 
     init() {

@@ -68,6 +68,34 @@ describe('HTTP API', () => {
     expect(flat.total).toBe(0);
   });
 
+  it('lists a view in a seeded random order that pages without repeats', async () => {
+    await setup([{ id: 'a' }]);
+    for (let i = 0; i < 12; i++) await makePng(path.join(env.lib('a'), `${i}.png`), { color: `#${String(i).padStart(2, '0')}4466` });
+    ageAll(env.root);
+    await env.sync();
+    const order = async (seed: number) => {
+      const names: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: { items: { name: string }[]; next: string | null; total?: number } = (await app.inject({ url: `/api/assets?library=a&order=random&seed=${seed}&limit=5${cursor ? `&cursor=${cursor}` : ''}` })).json();
+        if (!cursor) expect(page.total).toBe(12);
+        names.push(...page.items.map((x: { name: string }) => x.name));
+        cursor = page.next;
+      } while (cursor);
+      return names;
+    };
+    const a = await order(7);
+    expect(new Set(a).size).toBe(12);
+    // The same seed gives the same order; another seed a different one, neither by date.
+    expect(await order(7)).toEqual(a);
+    const b = await order(123456);
+    expect(b).not.toEqual(a);
+    expect(new Set(b).size).toBe(12);
+    const byDate = (await app.inject({ url: '/api/assets?library=a&limit=12' })).json().items.map((x: { name: string }) => x.name);
+    expect(a).not.toEqual(byDate);
+    expect((await app.inject({ url: '/api/assets?library=a&order=random&cursor=5_3' })).statusCode).toBe(400);
+  });
+
   it('leaves libraries with showInAll: false out of All media and Favorites', async () => {
     await setup([{ id: 'a' }, { id: 'hidden', showInAll: false }]);
     await makePng(path.join(env.lib('a'), 'x.png'));

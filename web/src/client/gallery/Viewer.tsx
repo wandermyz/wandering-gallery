@@ -35,6 +35,8 @@ export interface ViewerProps {
   /** A document linked to another gallery asset. */
   onOpenAsset: (id: number) => void;
   writable: (a: Asset) => boolean;
+  /** Starts a slideshow from this item (null when it can't be in one). */
+  onSlideshow?: (a: Asset) => void;
 }
 
 export function Viewer(props: ViewerProps) {
@@ -211,6 +213,13 @@ export function Viewer(props: ViewerProps) {
         case 'i':
         case 'I':
           setInfo((v) => !v);
+          break;
+        case 's':
+        case 'S':
+          if (a && p.onSlideshow) {
+            e.preventDefault();
+            p.onSlideshow(a);
+          }
           break;
         case 't':
         case 'T':
@@ -527,6 +536,9 @@ export function Viewer(props: ViewerProps) {
                 setTimeout(() => setCopied((c) => (c?.id === asset.id ? null : c)), 1600);
               }}
             />
+          )}
+          {props.onSlideshow && (
+            <IconButton icon="slideshow" label="Start slideshow" onClick={() => props.onSlideshow!(asset)} />
           )}
           <span class="viewer-count">{index + 1}{props.hasMore ? '' : ` / ${items.length}`}</span>
         </header>

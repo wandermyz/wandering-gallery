@@ -50,8 +50,10 @@ struct AssetGridScreen: View {
     @State private var list: AssetListModel?
     @State private var folders: [Folder] = []
     @State private var showFilters = false
+    @State private var slideshowAfterSheet = false
     @State private var search = ""
     @State private var viewer: ViewerStart?
+    @State private var slideshow: SlideshowStart?
     /// Multi-select: the selected asset ids, or nil when not selecting.
     @State private var selection: Set<Int>?
     @State private var confirmTrash = false
@@ -59,6 +61,7 @@ struct AssetGridScreen: View {
     @State private var toast: Toast?
     @State private var error: String?
     @AppStorage("gridDensity") private var density = GridDensity.m
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         content
@@ -79,8 +82,12 @@ struct AssetGridScreen: View {
             }
             .errorAlert($error)
             .searchable(text: $search, placement: .toolbar, prompt: "Filter by filename")
-            .sheet(isPresented: $showFilters) {
-                FilterSheet(filters: $filters, density: $density, isLibrary: libraryID != nil, isFavorites: scope == .favorites)
+            .sheet(isPresented: $showFilters, onDismiss: {
+                // Started from the sheet: once it's gone (one presentation at a time).
+                if slideshowAfterSheet { slideshowAfterSheet = false; startSlideshow() }
+            }) {
+                FilterSheet(filters: $filters, density: $density, isLibrary: libraryID != nil, isFavorites: scope == .favorites,
+                            onSlideshow: canSlideshow ? { slideshowAfterSheet = true } : nil)
                     .presentationDetents([.medium, .large])
             }
             .fullScreenCover(item: $viewer) { start in
@@ -90,6 +97,9 @@ struct AssetGridScreen: View {
                         openRoute(.tag(tag))
                     })
                 }
+            }
+            .fullScreenCover(item: $slideshow) { start in
+                SlideshowScreen(list: start.list, client: model.client, startID: start.id, pinned: false) { _ in }
             }
             .task(id: TaskKey(query: query, epoch: model.visibilityEpoch)) {
                 let l = AssetListModel(client: model.client, query: query)
@@ -116,6 +126,25 @@ struct AssetGridScreen: View {
 
     struct ViewerStart: Identifiable {
         let id: Int
+    }
+
+    struct SlideshowStart: Identifiable {
+        let id: Int
+        let list: AssetListModel
+    }
+
+    private var canSlideshow: Bool { shown.contains(where: SlideshowModel.eligible) }
+
+    /// A slideshow of what the grid shows (only the matches while filtering by filename).
+    private func startSlideshow() {
+        guard let list, let first = shown.first else { return }
+        if shown.count == list.items.count {
+            slideshow = SlideshowStart(id: first.id, list: list)
+        } else {
+            let matches = AssetListModel(client: model.client, query: query)
+            matches.setItems(shown)
+            slideshow = SlideshowStart(id: first.id, list: matches)
+        }
     }
 
     // MARK: Query
@@ -457,6 +486,17 @@ struct AssetGridScreen: View {
             .accessibilityLabel("Select items")
             .accessibilityIdentifier("grid-select")
             .disabled(shown.isEmpty)
+            // A phone's bar keeps room for the title: there it's in the filter sheet.
+            if sizeClass == .regular {
+                Button {
+                    startSlideshow()
+                } label: {
+                    Image(systemName: "play.rectangle")
+                }
+                .accessibilityLabel("Slideshow")
+                .accessibilityIdentifier("grid-slideshow")
+                .disabled(!canSlideshow)
+            }
             if model.hiddenEnabled {
                 Button(action: showUnlock) {
                     Image(systemName: model.unlocked ? "lock.open" : "lock")
@@ -524,11 +564,21 @@ struct FilterSheet: View {
     @Binding var density: GridDensity
     let isLibrary: Bool
     let isFavorites: Bool
+    /// Starts a slideshow of the view (nil: nothing to show).
+    var onSlideshow: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
+                Button {
+                    dismiss()
+                    onSlideshow?()
+                } label: {
+                    Label("Play slideshow", systemImage: "play.rectangle")
+                }
+                .disabled(onSlideshow == nil)
+                .accessibilityIdentifier("filters-slideshow")
                 Picker("Show", selection: $filters.kind) {
                     Text("All").tag(AssetKind?.none)
                     Text("Images").tag(AssetKind?.some(.image))

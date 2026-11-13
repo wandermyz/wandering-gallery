@@ -152,7 +152,9 @@ export interface Query {
   kind?: 'image' | 'video' | 'audio' | 'markdown';
   caption?: CaptionFilter;
   tag?: string;
-  order?: 'asc' | 'desc';
+  /** `random` shuffles the whole view (the same `seed` gives the same order). */
+  order?: 'asc' | 'desc' | 'random';
+  seed?: number;
 }
 
 export interface BatchResult {
@@ -235,7 +237,7 @@ export const api = {
   assets: (q: Query, cursor?: string | null, limit = 120) =>
     request<Page>('GET', `/api/assets${qs({
       library: q.library, folder: q.folder, recursive: q.recursive === false ? '0' : undefined,
-      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, caption: q.caption, tag: q.tag, order: q.order === 'asc' ? 'asc' : undefined,
+      favorite: q.favorite, minRating: q.minRating || undefined, kind: q.kind, caption: q.caption, tag: q.tag, order: q.order === 'desc' ? undefined : q.order, seed: q.order === 'random' ? q.seed : undefined,
       cursor, limit,
     })}`),
   asset: (id: number) => request<Asset>('GET', `/api/assets/${id}`),

@@ -27,6 +27,8 @@ struct ViewerScreen: View {
     /// The open item as first shown. When its file changes on disk, its page keeps this
     /// version (scroll position, zoom, playback) until Reload; other updates show at once.
     @State private var shown: Asset?
+    /// A slideshow started from the open item (the viewer waits underneath).
+    @State private var slideshow: Int?
 
     private var asset: Asset? { list.items.first { $0.id == currentID } }
     private var index: Int? { list.items.firstIndex { $0.id == currentID } }
@@ -103,6 +105,12 @@ struct ViewerScreen: View {
         }
         .errorAlert($error)
         .sheet(item: $shareItem) { item in ShareSheet(items: [item.url]) }
+        .fullScreenCover(item: Binding(get: { slideshow.map(SlideshowStartID.init) }, set: { slideshow = $0?.id })) { start in
+            SlideshowScreen(list: list, client: model.client, startID: start.id, pinned: true) { last in
+                // Back in the viewer on the slide it ended on.
+                if list.items.contains(where: { $0.id == last }) { currentID = last }
+            }
+        }
         .onAppear { if currentID == nil { currentID = startID } }
         .onChange(of: currentID) {
             zoomed = false
@@ -127,11 +135,12 @@ struct ViewerScreen: View {
             }
             return .handled
         }
-        .onKeyPress(characters: CharacterSet(charactersIn: "fi012345")) { press in
+        .onKeyPress(characters: CharacterSet(charactersIn: "fis012345")) { press in
             guard let asset else { return .ignored }
             switch press.characters {
             case "f": Task { await setFavorite(asset, !asset.favorite) }
             case "i": showInfo.toggle()
+            case "s": slideshow = asset.id
             default: if let n = Int(press.characters) { Task { await rate(asset, n) } }
             }
             return .handled
@@ -164,7 +173,7 @@ struct ViewerScreen: View {
         case .video, .audio:
             // Edge to edge behind the bars (a tall video uses the whole screen); the player's
             // own controls stay clear of the bars.
-            PlayerPage(asset: a, active: a.id == currentID, controlsInsets: EdgeInsets(
+            PlayerPage(asset: a, active: a.id == currentID && slideshow == nil, controlsInsets: EdgeInsets(
                 top: insets.top + Self.barHeight + Self.controlsGap - Self.playerTopMargin, leading: insets.leading,
                 bottom: insets.bottom + Self.barHeight + Self.controlsGap - Self.playerBottomMargin, trailing: insets.trailing))
             // A new player for a reloaded file.
@@ -255,6 +264,11 @@ struct ViewerScreen: View {
                         .accessibilityIdentifier("viewer-subtitle")
                 }
                 Spacer()
+                Button { slideshow = a.id } label: {
+                    Image(systemName: "play.rectangle").frame(width: 40, height: 40)
+                }
+                .accessibilityLabel("Start slideshow")
+                .accessibilityIdentifier("viewer-slideshow")
                 if let p = a.filePath {
                     Button {
                         copyToPasteboard(p)
@@ -487,4 +501,8 @@ struct AssetByIDViewer: View {
             do { asset = try await model.client.asset(id) } catch { self.error = error.localizedDescription }
         }
     }
+}
+
+private struct SlideshowStartID: Identifiable {
+    let id: Int
 }

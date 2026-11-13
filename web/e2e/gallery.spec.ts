@@ -767,3 +767,111 @@ test('Markdown documents render with their embedded images and videos, and can b
   await page.getByRole('button', { name: 'Lock now' }).click();
   await expect(page.locator('.cell[aria-label="tale.md"]')).toHaveCount(1);
 });
+
+// parity: SLIDE-01
+test('slideshow plays the view full screen, advancing on a timer, and returns where it ended', async ({ page }) => {
+  await openGallery(page);
+  await page.evaluate(() => localStorage.setItem('wg.slideshow.interval', '3'));
+  const first = await page.locator('.cell.loaded').first().getAttribute('aria-label');
+  const name = page.locator('.slideshow .viewer-name');
+
+  const topbarButton = page.getByRole('button', { name: 'Slideshow', exact: true });
+  if (await topbarButton.isVisible()) await topbarButton.click();
+  else {
+    // A phone's topbar keeps it in the filter sheet.
+    await page.getByRole('button', { name: 'Filter and view options' }).click();
+    await page.getByRole('button', { name: 'Play slideshow' }).click();
+  }
+  await expect(page.locator('.slideshow')).toBeVisible();
+  await expect(name).toHaveText(first!);
+  await expect(page.locator('.ss-top-layer.in img.ss-media')).toBeVisible();
+  // It moves on by itself once the image has had its 3 seconds.
+  await expect(name).not.toHaveText(first!, { timeout: 8000 });
+  const second = await name.textContent();
+
+  // The controls have faded away by now; a tap brings them back.
+  await expect(page.locator('.slideshow.controls-hidden')).toHaveCount(1);
+  await page.locator('.slideshow').click({ position: { x: 40, y: (page.viewportSize()!.height / 2) | 0 } });
+  await expect(page.locator('.slideshow.controls-hidden')).toHaveCount(0);
+  // Paused, it stays put (and its controls stay up); Previous and Next still step.
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.waitForTimeout(3600);
+  await expect(name).toHaveText(second!);
+  await page.getByRole('button', { name: 'Previous' }).click();
+  await expect(name).toHaveText(first!);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(name).toHaveText(second!);
+  // The interval button cycles and is remembered.
+  await page.getByRole('button', { name: 'Seconds per slide: 3' }).click();
+  await expect(page.getByRole('button', { name: 'Seconds per slide: 5' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('wg.slideshow.interval'))).toBe('5');
+
+  await page.getByRole('button', { name: 'Exit slideshow' }).click();
+  await expect(page.locator('.slideshow')).toHaveCount(0);
+  await expect(page.locator(`.cell[aria-label="${second}"]`)).toBeInViewport();
+
+  // Started from the viewer, it begins at the open item and hands back the one it ended on.
+  await openAsset(page, first!);
+  await page.getByRole('button', { name: 'Start slideshow' }).click();
+  await expect(name).toHaveText(first!);
+  await expect(page.locator('.viewer')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(name).toHaveText(second!);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.slideshow')).toHaveCount(0);
+  await expect(page.locator('.viewer-name')).toHaveText(second!);
+});
+
+// parity: SLIDE-03
+test('the slideshow can shuffle the whole view, and remembers it', async ({ page }) => {
+  await openGallery(page);
+  await page.evaluate(() => { localStorage.setItem('wg.slideshow.shuffle', '0'); localStorage.setItem('wg.slideshow.interval', '30'); });
+  const first = (await page.locator('.cell.loaded').first().getAttribute('aria-label'))!;
+  const name = page.locator('.slideshow .viewer-name');
+  const start = async () => {
+    const topbarButton = page.getByRole('button', { name: 'Slideshow', exact: true });
+    if (await topbarButton.isVisible()) await topbarButton.click();
+    else {
+      await page.getByRole('button', { name: 'Filter and view options' }).click();
+      await page.getByRole('button', { name: 'Play slideshow' }).click();
+    }
+    await expect(page.locator('.slideshow')).toBeVisible();
+  };
+  const run = async (n: number) => {
+    const seen = [(await name.textContent())!];
+    for (let i = 1; i < n; i++) {
+      await page.getByRole('button', { name: 'Next' }).click();
+      await expect(name).not.toHaveText(seen[seen.length - 1]);
+      seen.push((await name.textContent())!);
+    }
+    return seen;
+  };
+
+  await start();
+  await page.getByRole('button', { name: 'Pause' }).click();
+  // Turned on, it fetches the view in a random order, keeping the current slide first.
+  const random = page.waitForRequest((r) => r.url().includes('order=random'));
+  await page.getByRole('button', { name: 'Shuffle off' }).click();
+  await random;
+  await expect(page.getByRole('button', { name: 'Shuffle on' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('wg.slideshow.shuffle'))).toBe('1');
+  const shuffled = await run(6);
+  expect(new Set(shuffled).size).toBe(6);
+  // Not the gallery's order (what Next steps through with shuffle off).
+  const all = (await (await page.request.get('/api/assets?limit=500')).json()).items as { name: string; kind: string }[];
+  const inOrder = all.filter((a) => a.kind === 'image' || a.kind === 'video').map((a) => a.name);
+  const at = inOrder.indexOf(shuffled[0]);
+  expect(shuffled).not.toEqual(inOrder.slice(at, at + 6));
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('.slideshow')).toHaveCount(0);
+  // Remembered: started from the viewer it begins on the open item, then goes on at random.
+  await openAsset(page, first);
+  await page.getByRole('button', { name: 'Start slideshow' }).click();
+  await expect(name).toHaveText(first);
+  await expect(page.getByRole('button', { name: 'Shuffle on' })).toBeVisible();
+  await page.getByRole('button', { name: 'Shuffle on' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('wg.slideshow.shuffle'))).toBe('0');
+  await page.keyboard.press('Escape');
+});
