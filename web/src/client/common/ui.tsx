@@ -17,6 +17,12 @@ const PATHS: Record<string, string> = {
   filter: 'M4 6h16M7 12h10M10 18h4',
   folder: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   play: 'M8 5.5v13l11-6.5z',
+  pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
+  slideshow: 'M3 5h18v12H3zM10.5 8.5v5l4-2.5zM8 21h8',
+  fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  'fullscreen-exit': 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+  volume: 'M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12',
+  mute: 'M4 9h4l5-4v14l-5-4H4zM17 9.5l5 5M22 9.5l-5 5',
   refresh: 'M20 12a8 8 0 11-2.3-5.7M20 4v5h-5',
   copy: 'M9 9h10v11H9zM5 15V4h10',
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
@@ -40,7 +46,7 @@ const PATHS: Record<string, string> = {
   gauge: 'M4.9 18a9 9 0 1114.2 0M12 13l4-5M12 13h.01',
 };
 
-const FILLED = new Set(['heart', 'star', 'play']);
+const FILLED = new Set(['heart', 'star', 'play', 'pause']);
 
 export function Icon({ name, filled, size = 22, class: className }: { name: keyof typeof PATHS | string; filled?: boolean; size?: number; class?: string }) {
   const fill = filled ?? FILLED.has(name);

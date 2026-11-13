@@ -7,6 +7,8 @@ output on your own machine.
 - **Photo-app feel**: dark theme, virtualized thumbnail grid grouped by day,
   full-screen viewer with swipe, pinch-zoom, double-tap zoom, and keyboard
   navigation. Works in iPhone Safari (portrait and landscape) and desktop browsers.
+- **Slideshow** of any view: full screen, crossfading images every 3–30 s, videos
+  played through, screen kept awake.
 - **ComfyUI-aware**: reads the embedded `prompt` (API graph) and `workflow`
   from PNG, WebP, AVIF, MP4/MOV/WebM, and shows prompts, seed, sampler,
   scheduler, steps, CFG, models, and LoRAs. You can copy prompts and open the
@@ -169,6 +171,8 @@ experience.
 | Copy the file's path (for a generate flow) | copy button, top right | — |
 | Move to trash | 🗑 button (asks first) | `Delete` (asks first) |
 | Hide controls | single tap | — |
+| Slideshow | ▶︎ in the viewer's top bar, or *Play slideshow* in the filter sheet | `S` in the viewer, or the topbar's slideshow button |
+| In the slideshow: pause, step, exit | tap for the controls, swipe left / right | `Space`, ← / →, `Esc` |
 
 The app has sections: *Gallery*, *Generate* (ComfyUI workflows) and *Dashboard*.
 On desktop they're in a rail on the left. On
